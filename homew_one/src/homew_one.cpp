@@ -161,7 +161,8 @@ public:
 
 		float last_diff = (time[time.size()-1]+500)-time[time.size()-1];
 		v_last = (((controls[0]-controls[controls.size()-1])/last_diff)+((controls[controls.size()-1]-controls[controls.size()-2])/(time[time.size()-1]-time[time.size()-2])))/2.0f;
-		v_first = Vector(0.2f , 0.2f , 0);
+		v_first = Vector(1.0f , 1.0f , 0);
+		Vector point;
 		Vector v0 , v1;
 		Vector p_prev , p_next;
 		float  t_prev , t_next;
@@ -194,11 +195,19 @@ public:
 						//call hermite interpolation function and return the point
 						//return Hermite(controls[i] , v0 , time[i] , p_next , v1 , t_next , t , false);
 					}
+					/*
 					if(abs(t-intersect)<=0.1f){
 						tangent_v = Hermite (controls[i] , v0 , time[i] , p_next , v1 , t_next , t , true);
 						tangent_v = tangent_v/tangent_v.Length();
 					}
-					return Hermite(controls[i] , v0 , time[i] , p_next , v1 , t_next , t , false);
+					*/
+					point = Hermite(controls[i] , v0 , time[i] , p_next , v1 , t_next , t , false);
+					Vector temp = point-p0;
+					if(temp.Length()<0.2f){
+						tangent_v = Hermite (controls[i] , v0 , time[i] , p_next , v1 , t_next , intersect , true);
+						tangent_v = tangent_v/tangent_v.Length();
+					}
+					return point;
 				}
 
 			}
@@ -208,11 +217,19 @@ public:
 				v1 = v_first;
 				p_next = controls[0];
 				t_next = time[time.size()-1]+500;
+				/*
 				if(abs(t-intersect)<=0.1f){
 					tangent_v = Hermite(controls[i] , v_last , time[i] , controls[0] , v_first , time[time.size()-1]+500 , t , true);
 					tangent_v = tangent_v/tangent_v.Length();
 				}
-				return Hermite(controls[i] , v_last , time[i] , controls[0] , v_first , time[time.size()-1]+500 , t , false);
+				*/
+				point =Hermite(controls[i] , v_last , time[i] , controls[0] , v_first , time[time.size()-1]+500 , t , false);
+				Vector temp = p0-point;
+				if(temp.Length()<0.2f){
+					tangent_v = Hermite(controls[i] , v_last , time[i] , controls[0] , v_first , time[time.size()-1]+500 , intersect , true);
+					tangent_v = tangent_v/tangent_v.Length();
+				}
+				return point;
 			}
 
 	}
@@ -269,12 +286,12 @@ public:
 			n.y = -v.x;
 			n = n/(n.Length());
 			p0 = lp[0];
-		}else{return;}
+		}
 		count++;
 	}
 
 	bool isOnParabola(Vector point){
-		return abs((abs(line_distance(point))-abs(focus_distance(point))))<0.1f;
+		return abs((abs(line_distance(point))-abs(focus_distance(point))))<0.2f;
 	}
 
 	float line_distance(Vector r){
@@ -293,7 +310,7 @@ public:
 
 
 	bool isInside(Vector point){
-		if(abs(focus_distance(point))<abs(line_distance(point))){
+		if(fabs(focus_distance(point))<fabs(line_distance(point))){
 			return true;
 		}else {return false;}
 	}
@@ -328,11 +345,25 @@ public:
 const int screenWidth = 600;	// alkalmazås ablak felbontåsa
 const int screenHeight = 600;
 
-Vector transform(Vector v){
+int width=1000;
+int height=1000;
+
+Vector norm_transform(Vector v){
+	/*
 	v.x = (v.x-screenWidth/2)/(screenWidth/2);
 	v.y = (screenHeight/2-v.y)/(screenHeight/2);
+	*/
+	v.x = v.x/(500);
+	v.y = v.y/(500);
 	return v;
 }
+
+Vector world_transform(Vector v){
+	v.x=((v.x-screenWidth/2)/(screenWidth/2))*(width/2);
+	v.y=((screenHeight/2-v.y)/(screenHeight/2))*(height/2);
+	return v;
+}
+
 
 long time;
 CatmullRom catmull;
@@ -340,7 +371,6 @@ parabola para;
 Vector intersect;
 bool found_intersect = false;
 Color image[screenWidth*screenHeight];	// egy alkalmazås ablaknyi kÊp
-Color bgr[screenWidth*screenHeight];
 
 // Inicializacio, a program futasanak kezdeten, az OpenGL kontextus letrehozasa utan hivodik meg (ld. main() fv.)
 void onInitialization( ) {
@@ -350,34 +380,11 @@ void onInitialization( ) {
 // Rajzolas, ha az alkalmazas ablak ervenytelenne valik, akkor ez a fuggveny hivodik meg
 void onDisplay( ) {
 
-    glClearColor(0.1f, 0.2f, 0.3f, 1.0f);		// torlesi szin beallitasa
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // kepernyo torles
+     glClearColor(0.1f, 0.2f, 0.3f, 1.0f);		// torlesi szin beallitasa
+     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // kepernyo torles
 
-    // ..
-
-    // Peldakent atmasoljuk a kepet a rasztertarba
-    glDrawPixels(screenWidth, screenHeight, GL_RGB, GL_FLOAT, bgr);
-
-    if(para.getCount()==3){
-//drawing background point by point
-    	glBegin(GL_POINTS);
-    		for(int x = 0 ; x<600 ; x++){
-    			for(int y=0 ; y<600 ; y++){
-    				Vector temp(x,y,0);
-    				if(para.isInside(temp)){
-    					temp=transform(temp);
-    					glColor3f(1,1,0);
-    					glVertex2f(temp.x , temp.y);
-
-    				}else{
-    					temp=transform(temp);
-    					glColor3f(0,1,1);
-    					glVertex2f(temp.x , temp.y);
-    				}
-    			}
-    		}
-    		glEnd();
-    	}
+    //load the background (parabola)
+     glDrawPixels(screenWidth, screenHeight, GL_RGB, GL_FLOAT, image);
 
 //drawing the spline
     glColor3f(1,1,1);
@@ -395,49 +402,57 @@ void onDisplay( ) {
 					para.addIntersect(temp);
 					catmull.addIntersect(temp, i);
 				}
-				temp=transform(temp);
+				temp=norm_transform(temp);
 				glVertex2f(temp.x , temp.y);
 			}
-		glEnd();
-	}
+		}
 
+	glEnd();
 	//draw the tangent to the parabola
+	if(found_intersect){
 		glColor3f(0,1,0);
+		Vector p0;
+		Vector p1;
 
-		glBegin(GL_LINE_STRIP);
-
-			for(float i = -100 ; i<100 ; i+=1){
-				Vector temp;
-				temp = para.tangent_r(i);
-				temp = transform(temp);
-				glVertex2f(temp.x , temp.y);
-			}
+		glBegin(GL_LINES);
+				p0 = para.tangent_r(-200);
+				p0 = norm_transform(p0);
+				glVertex2f(p0.x , p0.y);
+				p1 = para.tangent_r(200);
+				p1 = norm_transform(p1);
+				glVertex2f(p1.x , p1.y);
 		glEnd();
 
-		glBegin(GL_LINE_STRIP);
-			for(float i = -100 ; i<100 ; i+=1){
-				Vector temp;
-				temp = catmull.tangent_r(i);
-				temp = transform(temp);
-				glVertex2f(temp.x , temp.y);
-			}
+		glBegin(GL_LINES);
+				p0 = catmull.tangent_r(-200);
+				p1 = catmull.tangent_r(200);
+
+				p0 = norm_transform(p0);
+				glVertex2f(p0.x , p0.y);
+				p1 = norm_transform(p1);
+				glVertex2f(p1.x , p1.y);
 		glEnd();
 
+	}
 	//radius of the point
-		float radius = 0.01f;
+		float radius = 5.0f;
 
 		//drawing the control points
 		for(size_t i=0 ; i<catmull.getControls().size() ; i++){
 			Vector temp;
 			temp = catmull.getControls()[i];
-			temp=transform(temp);
+
 			//draw a polygon (circle)
 			glColor3f(1,0,0);
 			glBegin(GL_POLYGON);
 				//calculate the vertexes
 				// X = x0+cos(angle) , Y=y0+sin(angle)
 				for(float j = 0 ; j<M_PI*2 ; j+=M_PI/12){
-					glVertex2f(temp.x+cos(j)*radius , temp.y+sin(j)*radius);
+					Vector point;
+					point.x = temp.x+cos(j)*radius;
+					point.y = temp.y+sin(j)*radius;
+					point = norm_transform(point);
+					glVertex2f(point.x , point.y);
 				}
 
 			glEnd();
@@ -446,10 +461,13 @@ void onDisplay( ) {
 			glColor3f(1.0f , 1.0f , 1.0f);
 			glBegin(GL_LINE_LOOP);
 			for(float j = 0 ; j<M_PI*2 ; j+=M_PI/12){
-					glVertex2f(temp.x+cos(j)*radius , temp.y+sin(j)*radius);
+				Vector point;
+				point.x = temp.x+cos(j)*radius;
+				point.y = temp.y+sin(j)*radius;
+				point = norm_transform(point);
+				glVertex2f(point.x , point.y);
 				}
 			glEnd();
-
 		}
 
 	found_intersect = false;
@@ -459,7 +477,25 @@ void onDisplay( ) {
 
 // Billentyuzet esemenyeket lekezelo fuggveny (lenyomas)
 void onKeyboard(unsigned char key, int x, int y) {
-    if (key == 'd') glutPostRedisplay( ); 		// d beture rajzold ujra a kepet
+    if (key == 'd'){
+    	glViewport(-150 , -150 , 900, 900);
+    	width = 500;
+    	height = 500;
+    	for(int x = 0 ; x<screenWidth ; x++){
+    	    for(int y=0 ; y<screenHeight ; y++){
+    	    	 Vector temp(x,y,0);
+    	    	 int yt=screenHeight-1-y;
+    	    	 Vector world = world_transform(temp);
+    	    	 if(para.isInside(world)){
+    	    		 image[x+(yt*screenHeight)]=Color(1,1,0);
+    	    	 }else{
+    	    		 image[x+(yt*screenHeight)]=Color(0,1,1);
+    	    	 }
+    	    }
+    }
+
+    	glutPostRedisplay( ); 		// d beture rajzold ujra a kepet
+    }
 
 }
 
@@ -470,13 +506,37 @@ void onKeyboardUp(unsigned char key, int x, int y) {
 
 // Eger esemenyeket lekezelo fuggveny
 void onMouse(int button, int state, int x, int y) {
+
 	// A GLUT_LEFT_BUTTON / GLUT_RIGHT_BUTTON illetve GLUT_DOWN / GLUT_UP
+
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN){
     	Vector temp;
     	temp.x = x;
     	temp.y = y;
+    	temp = world_transform(temp);
+
     	catmull.addPoint(temp , (float)time);
-    	para.addPoint(temp);
+    	if(para.getCount()<3){
+    		para.addPoint(temp);
+    	}
+
+    	if(para.getCount()==3){
+    	//drawing background point by point
+
+    	    		for(int x = 0 ; x<screenWidth ; x+=1){
+    	    			for(int y=0 ; y<screenHeight ; y+=1){
+    	    				Vector temp(x,y,0);
+    	    				int yt=screenHeight-1-y;
+    	    				Vector world = world_transform(temp);
+    	    				if(para.isInside(world)){
+    	    					image[x+(yt*screenHeight)]=Color(1,1,0);
+    	    				}else{
+    	    					image[x+(yt*screenHeight)]=Color(0,1,1);
+    	    				}
+    	    			}
+    	    		}
+
+    	    	}
 
 		glutPostRedisplay( ); 						 // Ilyenkor rajzold ujra a kepet
     }
