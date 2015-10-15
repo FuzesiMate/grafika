@@ -68,6 +68,7 @@
 //--------------------------------------------------------
 #include<vector>
 
+
 struct Vector {
    float x, y, z;
 
@@ -124,9 +125,23 @@ struct Color {
 };
 
 
+long time;
+//Vector intersect;
+bool found_intersect = false;
+Color image[600*600];	// egy alkalmazås ablaknyi kÊp
+const int screenWidth = 600;	// alkalmazås ablak felbontåsa
+const int screenHeight = 600;
+int width=1000;
+int height=1000;
+
+Vector world_transform(Vector v){
+	v.x=((v.x-screenWidth/2)/(screenWidth/2))*(width/2);
+	v.y=((screenHeight/2-v.y)/(screenHeight/2))*(height/2);
+	return v;
+}
 
 class CatmullRom{
-private:
+public:
 	std::vector<Vector> controls;
 	std::vector<float> time;
 	std::vector<Vector> velocity;
@@ -151,7 +166,6 @@ private:
 		}
 	}
 
-public:
 	void addPoint(Vector point , float t){
 		controls.push_back(point);
 		time.push_back(t);
@@ -160,16 +174,16 @@ public:
 	Vector r(float t){
 
 		float last_diff = (time[time.size()-1]+500)-time[time.size()-1];
+
 		v_last = (((controls[0]-controls[controls.size()-1])/last_diff)+((controls[controls.size()-1]-controls[controls.size()-2])/(time[time.size()-1]-time[time.size()-2])))/2.0f;
 		v_first = Vector(1.0f , 1.0f , 0);
+
 		Vector point;
 		Vector v0 , v1;
-		Vector p_prev , p_next;
+		Vector p_prev , p_next , p_act , p_nextnext;
 		float  t_prev , t_next;
 
 		for(size_t i = 0 ; i<controls.size() ; i++){
-
-
 
 			if(i<controls.size()-1){
 				if(time[i]<=t && t<=time[i+1]){
@@ -177,21 +191,23 @@ public:
 					t_next = time[i+1];
 					p_prev = controls[i-1];
 					t_prev = time[i-1];
+					p_act = controls[i];
+					p_nextnext = controls[i+2];
 
 					if(i==0){
 						v0 = v_first;
-						v1 = (((controls[i+2]-p_next)/(time[i+2]-t_next))+((p_next-controls[i])/(t_next-time[i])))/2.0f;
+						v1 = (((p_nextnext-p_next)/(time[i+2]-t_next))+((p_next-p_act)/(t_next-time[i])))/2.0f;
 						//return Hermite(controls[i] , v0 , time[i] , p_next , v1 , t_next , t , false);
 
 					}else if(i==controls.size()-2){
 
-						v0 = (((p_next-controls[i])/(t_next-time[i]))+((controls[i]-p_prev)/(time[i]-t_prev)))/2.0f;
+						v0 = (((p_next-p_act)/(t_next-time[i]))+((p_act-p_prev)/(time[i]-t_prev)))/2.0f;
 						v1 = v_last;
 						//return Hermite(controls[i] , v0 , time[i] , p_next , v1 , t_next , t,false);
 					}else{
 
-						v0 = (((p_next-controls[i])/(t_next-time[i]))+((controls[i]-p_prev)/(time[i]-t_prev)))/2.0f;
-						v1 = (((controls[i+2]-p_next)/(time[i+2]-t_next))+((p_next-controls[i])/(t_next-time[i])))/2.0f;
+						v0 = (((p_next-p_act)/(t_next-time[i]))+((p_act-p_prev)/(time[i]-t_prev)))/2.0f;
+						v1 = (((p_nextnext-p_next)/(time[i+2]-t_next))+((p_next-p_act)/(t_next-time[i])))/2.0f;
 						//call hermite interpolation function and return the point
 						//return Hermite(controls[i] , v0 , time[i] , p_next , v1 , t_next , t , false);
 					}
@@ -201,10 +217,10 @@ public:
 						tangent_v = tangent_v/tangent_v.Length();
 					}
 					*/
-					point = Hermite(controls[i] , v0 , time[i] , p_next , v1 , t_next , t , false);
+					point = Hermite(p_act , v0 , time[i] , p_next , v1 , t_next , t , false);
 					Vector temp = point-p0;
 					if(temp.Length()<0.2f){
-						tangent_v = Hermite (controls[i] , v0 , time[i] , p_next , v1 , t_next , intersect , true);
+						tangent_v = Hermite (p_act , v0 , time[i] , p_next , v1 , t_next , intersect , true);
 						tangent_v = tangent_v/tangent_v.Length();
 					}
 					return point;
@@ -216,6 +232,7 @@ public:
 				v0 = v_last;
 				v1 = v_first;
 				p_next = controls[0];
+				p_act = controls[i];
 				t_next = time[time.size()-1]+500;
 				/*
 				if(abs(t-intersect)<=0.1f){
@@ -223,10 +240,10 @@ public:
 					tangent_v = tangent_v/tangent_v.Length();
 				}
 				*/
-				point =Hermite(controls[i] , v_last , time[i] , controls[0] , v_first , time[time.size()-1]+500 , t , false);
+				point =Hermite(p_act , v_last , time[i] , p_next , v_first , time[time.size()-1]+500 , t , false);
 				Vector temp = p0-point;
 				if(temp.Length()<0.2f){
-					tangent_v = Hermite(controls[i] , v_last , time[i] , controls[0] , v_first , time[time.size()-1]+500 , intersect , true);
+					tangent_v = Hermite(p_act , v_last , time[i] , p_next , v_first , time[time.size()-1]+500 , intersect , true);
 					tangent_v = tangent_v/tangent_v.Length();
 				}
 				return point;
@@ -262,16 +279,16 @@ public:
 
 class parabola{
 
-private:
+public:
 	Vector lp[2];
 	Vector sp;
 	Vector p0;
+	Vector p1;
 	Vector n;
 	Vector v;
 	Vector intersect;
 	int count;
 
-public:
 	parabola(){
 		count = 0;
 	}
@@ -286,16 +303,16 @@ public:
 			n.y = -v.x;
 			n = n/(n.Length());
 			p0 = lp[0];
+			p1 = lp[1];
 		}
 		count++;
 	}
 
 	bool isOnParabola(Vector point){
-		return abs((abs(line_distance(point))-abs(focus_distance(point))))<0.2f;
+		return abs((abs(line_distance(point))-abs(focus_distance(point))))<0.1f;
 	}
 
 	float line_distance(Vector r){
-
 		return n*(p0-r);
 	}
 
@@ -310,9 +327,15 @@ public:
 
 
 	bool isInside(Vector point){
-		if(fabs(focus_distance(point))<fabs(line_distance(point))){
+
+		float focus_dist = focus_distance(point);
+		float line_dist = fabs(line_distance(point));
+
+		if((focus_dist-line_dist)<0){
 			return true;
-		}else {return false;}
+		}else{
+			return false;
+		}
 	}
 
 	void addIntersect(Vector in){
@@ -338,39 +361,25 @@ public:
 		return grad;
 	}
 
-
-
 };
 
-const int screenWidth = 600;	// alkalmazås ablak felbontåsa
-const int screenHeight = 600;
-
-int width=1000;
-int height=1000;
+CatmullRom catmull;
+parabola para;
+bool animation=false;
+Vector velocity(2.0f , 4.0f);
+Vector center(0,0,0);
 
 Vector norm_transform(Vector v){
 	/*
+	v.x = v.x/(width/2);
+	v.y = v.y/(height/2);
+	*/
 	v.x = (v.x-screenWidth/2)/(screenWidth/2);
 	v.y = (screenHeight/2-v.y)/(screenHeight/2);
-	*/
-	v.x = v.x/(500);
-	v.y = v.y/(500);
-	return v;
-}
-
-Vector world_transform(Vector v){
-	v.x=((v.x-screenWidth/2)/(screenWidth/2))*(width/2);
-	v.y=((screenHeight/2-v.y)/(screenHeight/2))*(height/2);
 	return v;
 }
 
 
-long time;
-CatmullRom catmull;
-parabola para;
-Vector intersect;
-bool found_intersect = false;
-Color image[screenWidth*screenHeight];	// egy alkalmazås ablaknyi kÊp
 
 // Inicializacio, a program futasanak kezdeten, az OpenGL kontextus letrehozasa utan hivodik meg (ld. main() fv.)
 void onInitialization( ) {
@@ -380,15 +389,32 @@ void onInitialization( ) {
 // Rajzolas, ha az alkalmazas ablak ervenytelenne valik, akkor ez a fuggveny hivodik meg
 void onDisplay( ) {
 
-     glClearColor(0.1f, 0.2f, 0.3f, 1.0f);		// torlesi szin beallitasa
+     glClearColor(0.0f, 1.0f, 1.0f, 0.0f);		// torlesi szin beallitasa
      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // kepernyo torles
 
     //load the background (parabola)
-     glDrawPixels(screenWidth, screenHeight, GL_RGB, GL_FLOAT, image);
+     //glDrawPixels(screenWidth, screenHeight, GL_RGB, GL_FLOAT, image);
+
+
+
+     for(float x = 0 ; x<600 ; x+=0.5){
+    	 for(float y = 0 ; y<600 ; y+=0.5f){
+    		 glBegin(GL_POINTS);
+    		 Vector temp(x,y,0);
+    		// Vector world = world_transform(temp);
+    		 if(para.isInside(temp)){
+    			 glColor3f(1,1,0);
+    			 Vector scr = norm_transform(temp);
+    			 glVertex2f(scr.x , scr.y);
+    		 }
+    		 glEnd();
+    	 }
+     }
+
 
 //drawing the spline
     glColor3f(1,1,1);
-	if(catmull.getControls().size()>1){
+	if(catmull.getControls().size()>2){
 		glBegin(GL_LINE_STRIP);
 			for(float i = catmull.getBegin(); i<=catmull.getEnd(); i+=0.1f){
 				Vector temp;
@@ -397,11 +423,11 @@ void onDisplay( ) {
 				if(para.isOnParabola(temp) && !found_intersect){
 					//only need the first
 					found_intersect = true;
-					//save the point
-					intersect = temp;
+					//save the point and the time for catmull
 					para.addIntersect(temp);
 					catmull.addIntersect(temp, i);
 				}
+				//temp = world_transform(temp);
 				temp=norm_transform(temp);
 				glVertex2f(temp.x , temp.y);
 			}
@@ -415,27 +441,30 @@ void onDisplay( ) {
 		Vector p1;
 
 		glBegin(GL_LINES);
-				p0 = para.tangent_r(-200);
+				p0 = para.tangent_r(-400);
+				//p0 = world_transform(p0);
 				p0 = norm_transform(p0);
 				glVertex2f(p0.x , p0.y);
-				p1 = para.tangent_r(200);
+				p1 = para.tangent_r(400);
+				//p1 = world_transform(p1);
 				p1 = norm_transform(p1);
 				glVertex2f(p1.x , p1.y);
 		glEnd();
 
 		glBegin(GL_LINES);
-				p0 = catmull.tangent_r(-200);
-				p1 = catmull.tangent_r(200);
-
+				p0 = catmull.tangent_r(-400);
+				p1 = catmull.tangent_r(400);
+				//p0= world_transform(p0);
 				p0 = norm_transform(p0);
 				glVertex2f(p0.x , p0.y);
+				//p1 = world_transform(p1);
 				p1 = norm_transform(p1);
 				glVertex2f(p1.x , p1.y);
 		glEnd();
 
 	}
 	//radius of the point
-		float radius = 5.0f;
+		float radius = 3.0f;
 
 		//drawing the control points
 		for(size_t i=0 ; i<catmull.getControls().size() ; i++){
@@ -447,10 +476,11 @@ void onDisplay( ) {
 			glBegin(GL_POLYGON);
 				//calculate the vertexes
 				// X = x0+cos(angle) , Y=y0+sin(angle)
-				for(float j = 0 ; j<M_PI*2 ; j+=M_PI/12){
+				for(float j = 0 ; j<M_PI*2 ; j+=M_PI/36){
 					Vector point;
 					point.x = temp.x+cos(j)*radius;
 					point.y = temp.y+sin(j)*radius;
+					//point = world_transform(point);
 					point = norm_transform(point);
 					glVertex2f(point.x , point.y);
 				}
@@ -460,10 +490,11 @@ void onDisplay( ) {
 			//draw the contour of control points
 			glColor3f(1.0f , 1.0f , 1.0f);
 			glBegin(GL_LINE_LOOP);
-			for(float j = 0 ; j<M_PI*2 ; j+=M_PI/12){
+			for(float j = 0 ; j<M_PI*2 ; j+=M_PI/36){
 				Vector point;
 				point.x = temp.x+cos(j)*radius;
 				point.y = temp.y+sin(j)*radius;
+				//point = world_transform(point);
 				point = norm_transform(point);
 				glVertex2f(point.x , point.y);
 				}
@@ -477,24 +508,14 @@ void onDisplay( ) {
 
 // Billentyuzet esemenyeket lekezelo fuggveny (lenyomas)
 void onKeyboard(unsigned char key, int x, int y) {
-    if (key == 'd'){
-    	glViewport(-150 , -150 , 900, 900);
-    	width = 500;
-    	height = 500;
-    	for(int x = 0 ; x<screenWidth ; x++){
-    	    for(int y=0 ; y<screenHeight ; y++){
-    	    	 Vector temp(x,y,0);
-    	    	 int yt=screenHeight-1-y;
-    	    	 Vector world = world_transform(temp);
-    	    	 if(para.isInside(world)){
-    	    		 image[x+(yt*screenHeight)]=Color(1,1,0);
-    	    	 }else{
-    	    		 image[x+(yt*screenHeight)]=Color(0,1,1);
-    	    	 }
-    	    }
-    }
-
-    	glutPostRedisplay( ); 		// d beture rajzold ujra a kepet
+	//if the key was a space button, zoom in and start animation
+    if (key == 0x20){
+    	center.x = -300;
+    	center.y = -300;
+    	glViewport(center.x , center.y , 1200, 1200);
+    	//glScalef(2.0f,2.0f,1.0f);
+    	animation = true;
+    	glutPostRedisplay( );
     }
 
 }
@@ -508,38 +529,20 @@ void onKeyboardUp(unsigned char key, int x, int y) {
 void onMouse(int button, int state, int x, int y) {
 
 	// A GLUT_LEFT_BUTTON / GLUT_RIGHT_BUTTON illetve GLUT_DOWN / GLUT_UP
-
+if(!animation){
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN){
     	Vector temp;
     	temp.x = x;
     	temp.y = y;
-    	temp = world_transform(temp);
-
+    	//temp = world_transform(temp);
+    	//temp = norm_transform(temp);
     	catmull.addPoint(temp , (float)time);
     	if(para.getCount()<3){
     		para.addPoint(temp);
     	}
-
-    	if(para.getCount()==3){
-    	//drawing background point by point
-
-    	    		for(int x = 0 ; x<screenWidth ; x+=1){
-    	    			for(int y=0 ; y<screenHeight ; y+=1){
-    	    				Vector temp(x,y,0);
-    	    				int yt=screenHeight-1-y;
-    	    				Vector world = world_transform(temp);
-    	    				if(para.isInside(world)){
-    	    					image[x+(yt*screenHeight)]=Color(1,1,0);
-    	    				}else{
-    	    					image[x+(yt*screenHeight)]=Color(0,1,1);
-    	    				}
-    	    			}
-    	    		}
-
-    	    	}
-
-		glutPostRedisplay( ); 						 // Ilyenkor rajzold ujra a kepet
-    }
+			glutPostRedisplay( ); 						 // Ilyenkor rajzold ujra a kepet
+    	}
+	}
 }
 
 // Eger mozgast lekezelo fuggveny
@@ -551,7 +554,24 @@ void onMouseMotion(int x, int y)
 // `Idle' esemenykezelo, jelzi, hogy az ido telik, az Idle esemenyek frekvenciajara csak a 0 a garantalt minimalis ertek
 void onIdle( ) {
      time = glutGet(GLUT_ELAPSED_TIME);		// program inditasa ota eltelt ido
-
+    if(animation){
+     		if((int)time%1==0){
+     			center.x += velocity.x;
+     			center.y += velocity.y;
+     			std::cout<<center.x<<"  "<<center.y<<std::endl;
+     			glViewport(center.x , center.y , 1200, 1200);
+     			if(center.x>0){
+     				velocity.x *= -1;
+     			}else if(center.y <0){
+     				velocity.y*=-1;
+     			}else if(center.x < -600){
+     				center.x*=-1;
+     			}else if(center.y < -600){
+     				center.y*=-1;
+     			}
+     			glutPostRedisplay();
+     		}
+    }
 }
 
 // ...Idaig modosithatod
