@@ -445,11 +445,11 @@ public:
 		x2 = (-b-sqrt(disc))/(2*a);
 
 		float tb;
-				if(x1<0.01f){
-					tb = x2;
-				}else if(x2<0.01f){
-					tb = x1;
-				}else if(x1<x2){
+				//if(x1<0.1f){
+					//tb = x2;
+				//}else if(x2<0.1f){
+					//tb = x1;
+				 if(x1<x2){
 					tb = x1;
 				}else if(x2<x1){
 					tb = x2;
@@ -566,7 +566,7 @@ object *obs[100];
 int objnum = 0;
 int maxdepth = 7;
 float eps = 0.001f;
-light l(Vector(0.0f , 180.0f , 0.0f) , Color(1.0f, 1.0f , 1.0f));
+light l(Vector(0.0f , 175.0f , 90.0f) , Color(1.0f, 1.0f , 1.0f));
 Hit firstIntersect(ray r , bool shadow){
 
 	Hit best;
@@ -690,29 +690,29 @@ void onInitialization( ) {
 	material q(Color(0.17f , 0.35f , 1.5f) , Color(3.1f, 2.7f, 1.9f) , Color(1,1,1) , Color(1,1,1), 3000.0f , false, false);
 	material s(Color(0.17f , 0.35f , 1.5f) , Color(3.1f, 2.7f, 1.9f) , Color(1,1,1) , Color(1,1,1), 50.0f , false, false);
 
-	obs[objnum]= new Sphere(Vector(0.0f, 0.0f ,300.0f) , 167.0f , &gold);
-	objnum++;
-	//obs[objnum]=new Paraboloid(Vector(0,0,200) , 20.0f , 20.0f , 1.0f ,&gold , 1);
+	//obs[objnum]= new Sphere(Vector(0.0f, 0.0f ,300.0f) , 167.0f , &gold);
 	//objnum++;
+	obs[objnum]=new Paraboloid(Vector(0,0,260) , 1.0f , 1.0f , 0.001f ,&gold , -1);
+	objnum++;
 	//obs[objnum]=new Sphere(Vector(-30.0f , -20.0f , 100.0f) , 30.0f , &glass);
 	//objnum++;
 
-	obs[objnum]=new Ellipsoid(Vector(0,-30,80) , 60 , 15 , 15 , &glass);
+	obs[objnum]=new Ellipsoid(Vector(0,-35,80) , 60 , 15 , 15 , &glass);
 	objnum++;
 
-	obs[objnum]=new Wall(Vector(200,0,0),Vector(-1, 0 , 0), &c, Color(0.3,0.6,0.8));
+	obs[objnum]=new Wall(Vector(200,0,0),Vector(-1, 0 , 0), &c, Color(0,1,1));
 	objnum++;
 	obs[objnum]=new Wall(Vector(0,200,0) , Vector(0,-1,0) , &f , Color(0.7,0.6,0.7));
 	objnum++;
-	obs[objnum]= new Wall(Vector(-200 , 0,0) , Vector(1,0,0), &a, Color(0.5, 0.9 , 0.8));
+	obs[objnum]= new Wall(Vector(-200 , 0,0) , Vector(1,0,0), &a, Color(1, 0 , 1));
 	objnum++;
 
 	obs[objnum]= new Wall(Vector(0,-200,0) , Vector(0,1,0) , &z, Color(0.5, 0.7, 0.9));
 	objnum++;
 
-	obs[objnum]=new Wall(Vector(0,0,300) , Vector(0,0,-1) , &d, Color(0.5,0.8,0.5));
+	obs[objnum]=new Wall(Vector(0,0,300) , Vector(0,0,-1) , &d, Color(1,1,0));
 	objnum++;
-	obs[objnum]=new Wall(Vector(0,0,-100) , Vector(0,0,1),&q, Color(0.4, 0.8 , 0.8));
+	obs[objnum]=new Wall(Vector(0,0,-100) , Vector(0,0,1),&q, Color(0.8, 0.4 , 0.9));
 	objnum++;
 
 	for (int i = 0; i < screenHeight; i++) {
