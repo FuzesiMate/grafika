@@ -136,19 +136,11 @@ struct Color {
 	   return Color(r/f , g/f , b/f);
    }
    Color operator+(const float& f){
-	   return Color(r-f , g-f , b-f);
+	   return Color(r+f , g+f , b+f);
    }
 };
 
-Vector transform(Vector p){
-	Vector temp;
-	temp.x = ((p.x)/600)*10;
-	temp.y = ((p.y)/600)*10;
-	temp.z = p.z;
-	return temp;
-}
-
-int texture=0;
+float lightspeed=1.0f;
 
 class material{
 public:
@@ -178,41 +170,33 @@ public:
 	Vector reflect(Vector inDir , Vector normal){
 		inDir = inDir.normalize();
 		normal = normal.normalize();
-		return inDir-normal*((normal*inDir)*2.0f);
+		return inDir-(normal*((normal*inDir)*2.0f));
 	}
 
 	Vector refract(Vector inDir , Vector normal){
 
-		Vector tnormal=normal;
 		float nt = n.r;
-		float cos = -(normal*inDir);
-
+		float cos = (-1.0f)*(inDir*normal);
+		Vector tnormal;
 		if(cos<0){
-			tnormal = normal*(-1.0f);
-			nt = 1/nt;
+			normal = normal*(-1.0f);
+			//normal.x = (-1.0f)*normal.x;
+			//normal.y = (-1.0f)*normal.y;
+			//normal.z = (-1.0f)*normal.z;
+			nt = 1.0f/nt;
 			//cos = -(normal*inDir);
 			cos = (-1.0f)*cos;
-		}
+		}else{lightspeed = 1.0f;}
 
 		float disc;
 		disc = 1.0f - ((1.0f - cos * cos ) / (nt * nt));
 
 
-		if(disc<0.01f){
-			return reflect(inDir, tnormal);
+		if(disc<0.0001f){
+			return reflect(inDir, normal);
 		}
 
-		Vector res;
-
-		res = inDir / nt + tnormal * (cos / nt -sqrt(disc));
-/*
-		res.x=inDir.x/nt+tnormal.x*(cos/nt-sqrtf(disc));
-		res.y=inDir.y/nt+tnormal.y*(cos/nt-sqrtf(disc));
-		res.z=inDir.z/nt+tnormal.z*(cos/nt-sqrtf(disc));
-		//std::cout<<res.x<<" "<<res.y<<" "<<res.z<<std::endl;
-		 *
-		 */
-		return res;
+		return (inDir / nt + normal * (cos / nt -sqrt(disc)));
 	}
 
 	Color Fresnel(Vector inDir , Vector normal){
@@ -250,6 +234,8 @@ public:
 	}
 };
 
+
+
 struct Hit{
 	float t;
 	Vector position;
@@ -259,12 +245,34 @@ struct Hit{
 };
 
 struct ray{
-	ray(Vector eye , Vector dir){
-		this->eye = eye;
-		v = dir;
+	ray(Vector e, Vector vi){
+		eye = e;
+		v = vi;
 	}
 	Vector eye;
 	Vector v;
+};
+
+struct Camera{
+	Vector ahead;
+	Vector up;
+	Vector right;
+	Vector eye;
+	Vector lookat;
+	Camera(Vector eye, Vector lookat , Vector up){
+		this->eye = eye;
+		ahead = lookat-eye;
+		this->lookat = lookat;
+		this->up = up;
+		right = up%lookat;
+	}
+	ray getRay(float x , float y){
+		float alpha = x-300;
+		float beta = y-300;
+		Vector p0 = lookat+(right*alpha+(up*beta));
+		Vector dir = (ahead+(right*alpha)+(up*beta)).normalize();
+		return ray(p0,dir);
+	}
 };
 
 struct light{
@@ -282,9 +290,7 @@ struct light{
 class object{
 public:
 	material *m;
-   virtual Hit intersect(ray r , bool shadow){
-
-   }
+   virtual Hit intersect(ray r , float t0 , float t1)=0;
    virtual ~object(){
 
    }
@@ -307,7 +313,7 @@ public:
 		this->p0 = p0;
 	}
 
-	Hit intersect(ray r , bool shadow){
+	Hit intersect(ray r, float t0 , float t1){
 		Hit best;
 		float d = normal*r.v;
 		if(d==0){
@@ -326,22 +332,24 @@ public:
 		double Pex = r.eye.x;
 		double Pey = r.eye.y;
 		double Pez = r.eye.z;
-		double t = -1.0 * ((nx * Pex - nx * Psx + ny * Pey - ny * Psy + nz * Pez - nz
+		double tb = -1.0 * ((nx * Pex - nx * Psx + ny * Pey - ny * Psy + nz * Pez - nz
 		* Psz) / (nx * dvx + ny * dvy + nz * dvz));
 
-		if(t>0.0001f){
-			best.t = t ;
+		if(tb>0.0001f){
+			best.t = tb ;
 			best.m = this->m;
-			best.position = r.eye+r.v*t;
+			best.position = r.eye+r.v*tb;
 			best.normal = normal;
 
-			if((int)roundf(best.t)%10==0){
+			float param = best.position.x+best.position.z+best.position.y;
+			if((int)roundf(tb)%2==0){
 				best.m->kd=stripe;
-			}else if((int)roundf(best.t)%10!=0){
+			}if((int)roundf(tb)%2!=0){
 				best.m->kd = paint;
 			}
 
 			}
+
 			return best;
 		}
 };
@@ -357,16 +365,16 @@ public:
 		this->rad = r;
 	}
 
-	Hit intersect(ray r , bool shadow){
+	Hit intersect(ray r , float t0 , float t1){
 		Hit best;
 
 		float tb;
 		float a = r.v*r.v;
 		float b = 2*((r.eye-o)*r.v);
 		float c = ((r.eye-o)*(r.eye-o))-powf(rad,2.0f);
-		float disc = powf(b,2)-(4*a*c);
+		float disc = powf(b,2.0f)-(4*a*c);
 
-		if(disc<0){
+		if(disc<0.0001){
 
 			return best;
 		}
@@ -382,11 +390,11 @@ public:
 		}else if(x2<x1){
 			tb = x2;
 		}
-		if(tb>(0+0.001f)){
+		if(tb>(0+0.1f)){
 		best.t = tb;
 		best.m = m;
 		best.position = r.eye+r.v*tb;
-		best.normal = (best.position-o).normalize();
+		best.normal = ((best.position-o)*2.0f).normalize();
 		return best;
 		}
 
@@ -410,29 +418,29 @@ public:
 		dir = d;
 		this->pos = pos;
 	}
-	Hit intersect(ray r , bool shadow){
+	Hit intersect(ray r , float t0 , float t1){
 		Hit best;
 
 		Vector v;
-		v.x = r.v.x/p1;
-		v.y = r.v.y/p2;
-		v.z = r.v.z/p3;
+		v.x = r.v.x/(p1*p1);
+		v.y = r.v.y/(p2*p2);
+		v.z = -r.v.z*(p3*p3);
 
 		Vector om;
-		om.x = pos.x/p1;
-		om.y = pos.y/p2;
-		om.z = pos.z/p3;
+		om.x = pos.x/(p1*p1);
+		om.y = pos.y/(p2*p2);
+		om.z = -pos.z*(p3*p3);
 
 		Vector pm;
-		pm.x = r.eye.x/p1;
-		pm.y = r.eye.y/p2;
-		pm.z = r.eye.z/p3;
+		pm.x = r.eye.x/(p1*p1);
+		pm.y = r.eye.y/(p2*p2);
+		pm.z = -r.eye.z*(p3*p3);
 
 		pm = pm-om;
 
 		float a = v.x*v.x+v.y*v.y;
 		float b = 2.0f*(pm.x*v.x+pm.y*v.y)-v.z;
-		float c = pm.x*pm.x+pm.y*pm.y-pm.z;
+		float c = (pm.x*pm.x)+(pm.y*pm.y)-pm.z;
 
 		float disc = powf(b,2.0f)-(4.0f*a*c);
 
@@ -445,30 +453,34 @@ public:
 		x2 = (-b-sqrt(disc))/(2*a);
 
 		float tb;
-				//if(x1<0.1f){
-					//tb = x2;
-				//}else if(x2<0.1f){
-					//tb = x1;
-				 if(x1<x2){
-					tb = x1;
-				}else if(x2<x1){
-					tb = x2;
-				}
+
+		if(x1<x2){
+			tb = x1;
+		}else if(x2<x1){
+			tb = x2;
+		}
+		if(x1<0.001f){
+			tb = x2;
+		}else if(x2<0.001f){
+			tb = x1;
+		}
+
+			if(tb>0.5f){
 
 				best.t = tb;
 				best.m = m;
 				best.position = r.eye+r.v*tb;
 
+				Vector temp = best.position;
 
-				Vector temp;
-				temp.x = best.position.x/p1;
-				temp.y = best.position.y/p2;
-				temp.z = best.position.z/p3;
-
-				best.normal = Vector(temp.x*2.0f , temp.y*2.0f , 1.0f/p3*dir).normalize();
+				best.normal = Vector(2.0f*(temp.x-pos.x) , 2.0f*(temp.y-pos.y) , 1.0f);
+				best.normal.x = best.normal.x/(p1*p1);
+				best.normal.y = best.normal.y/(p2*p2);
+				best.normal.z = best.normal.z*(p3*p3);
+				best.normal = best.normal.normalize();
 				return best;
 
-
+			}
 				return best;
 
 
@@ -480,176 +492,268 @@ public:
 
 	float p1,p2,p3;
 	Vector o;
+	Vector velocity;
+	float sin;
+	float cos;
 
-	Ellipsoid(Vector center, float aa , float bb , float cc , material *mat){
+	Ellipsoid(Vector center, float aa , float bb , float cc , material *mat , Vector velocity , float angle){
+		angle = angle*(M_PI/180.0f);
+		sin = sinf(angle);
+		cos = cosf(angle);
 		o = center;
 		p1 = aa;
 		p2 = bb;
 		p3 = cc;
 		m=mat;
+		this->velocity = velocity;
 	}
-	Vector rotate(Vector v){
+	Vector rotate(Vector v ){
 		Vector temp;
-		temp.x = v.x*cosf(20)-v.y*sinf(20);
-		temp.y = v.x*sinf(20)-v.y*cosf(20);
+		temp.x = v.x*cos-v.y*sin;
+		temp.y = v.x*sin+v.y*cos;
 		temp.z=v.z;
-	}
+
+		temp.x = temp.x*cos-temp.z*sin;
+		temp.z = -temp.x*sin+temp.z*cos;
+		//temp.y = v.y;
+
+		temp.y = temp.y*cos-temp.z*sin;
+		temp.z = temp.y*sin+temp.z*cos;
+		//temp.x = temp.x;
+		//temp = v;
+		return temp;
+}
 
 
-	Hit intersect(ray r ,bool shadow){
-
-		Vector v;
-		v.x = r.v.x/p1;
-		v.y = r.v.y/p2;
-		v.z = r.v.z/p3;
-
-		Vector om;
-		om.x = o.x/p1;
-		om.y = o.y/p2;
-		om.z = o.z/p3;
-
-		Vector pm;
-		pm.x = r.eye.x/p1;
-		pm.y = r.eye.y/p2;
-		pm.z = r.eye.z/p3;
-
-		pm = pm-om;
+	Hit intersect(ray r , float t0 , float t1){
 
 		Hit best;
+		Vector op;
+		float x , y , z;
+		Vector p0;
+		Vector v;
+		Vector orot;
+
+		for(float p = t0 ; p<(t1*60) ; p+=0.35f){
+			op = o;//-(velocity*p);
+
+			p0.x = r.eye.x*cos-r.eye.y*sin;
+			p0.y = r.eye.x*sin+r.eye.y*cos;
+			p0.z = r.eye.z;
+
+			p0.x = p0.x*cos-p0.z*sin;
+			p0.z = -p0.x*sin+p0.z*cos;
+
+			p0.y = p0.y*cos-p0.z*sin;
+			p0.z = p0.y*sin+p0.z*cos;
+
+			v.x = r.v.x*cos-r.v.y*sin;
+			v.y = r.v.x*sin+r.v.y*cos;
+			v.z = r.v.z;
+
+			v.x = v.x*cos-v.z*sin;
+			v.z = -v.x*sin+v.z*cos;
+
+			v.y = v.y*cos-v.z*sin;
+			v.z = v.y*sin+v.z*cos;
+
+			orot.x = op.x*cos-op.y*sin;
+			orot.y = op.x*sin+op.y*cos;
+			orot.z = op.z;
+
+			orot.x = orot.x*cos-orot.z*sin;
+			orot.z = -orot.x*sin+orot.z*cos;
+
+			orot.y = orot.y*cos-orot.z*sin;
+			orot.z = orot.y*sin+orot.z*cos;
+
+			x = (p0.x+lightspeed*v.x*p)-orot.x;
+			y = (p0.y+lightspeed*v.y*p)-orot.y;
+		    z = (p0.z+lightspeed*v.z*p)-orot.z;
+
+		    x = (x*x)/(p1*p1);
+		    y = (y*y)/(p2*p2);
+		    z = (z*z)/(p3*p3);
+
+
+		    float res = x+y+z-1.0f;
+		   if(fabs(res)<0.1f){
+			   best.t = p;
+			   best.m = m;
+			   best.position = r.eye+r.v*p;
+			   best.normal = ((best.position-op)*2.0f);
+
+			   best.normal.x = best.normal.x*cos-best.normal.y*sin;
+			   best.normal.y = best.normal.x*sin+best.normal.y*cos;
+
+			   best.normal.x = best.normal.x*cos-best.normal.z*sin;
+			   best.normal.z = -best.normal.x*sin+best.normal.z*cos;
+
+			   best.normal.y = best.normal.y*cos-best.normal.z*sin;
+			   best.normal.z = best.normal.y*sin+best.normal.z*cos;
+
+			   best.normal.x = best.normal.x/(p1);
+			   best.normal.y = best.normal.y/(p2);
+			   best.normal.z = best.normal.z/(p3);
+
+
+			   best.normal.x = best.normal.x*cos-best.normal.y*(-sin);
+			   best.normal.y = best.normal.x*(-sin)+best.normal.y*cos;
+
+			   best.normal.x = best.normal.x*cos-best.normal.z*(-sin);
+			   best.normal.z = -best.normal.x*(-sin)+best.normal.z*cos;
+
+			   best.normal.y = best.normal.y*cos-best.normal.z*(-sin);
+			   best.normal.z = best.normal.y*(-sin)+best.normal.z*cos;
+
+			   best.normal = best.normal.normalize();
+			   return best;
+		   }
+
+/*
+		Vector vin = rotate(r.v,0);
+
+		Vector v;
+		v.x = vin.x/(p1);
+		v.y = vin.y/(p2);
+		v.z = vin.z/(p3);
+
+		Vector orot = rotate(op,0);
+
+		Vector om;
+		om.x = orot.x/(p1);
+		om.y = orot.y/(p2);
+		om.z = orot.z/(p3);
+
+		Vector pr =rotate(r.eye,0);
+
+		Vector pm;
+		pr.x = pr.x/(p1);
+		pr.y = pr.y/(p2);
+		pr.z = pr.z/(p3);
+
+		pm = pr-om;
 
 				float tb;
+
 				float a = v*v;
-				float b = 2*((pm)*v);
-				float c = ((pm)*(pm))-powf(1.0f,2.0f);
+				float b = 2.0f*(pm*v);
+				float c = (pm*pm)-1.0f;
+
 				float disc = powf(b,2)-(4*a*c);
 
-				if(disc<0){
-
+				if(disc<0.001f){
 					return best;
 				}
-				float x1 = (-b+sqrt(disc))/(2*a);
-				float x2 = (-b-sqrt(disc))/(2*a);
+				float x1 = (-b+sqrt(disc))/(2.0f*a);
+				float x2 = (-b-sqrt(disc))/(2.0f*a);
 
-				if(x1<(0+0.001f)){
-					tb = x2;
-				}else if(x2<(0+0.001f)){
-					tb = x1;
-				}else if(x1<x2){
+				if(x1<x2){
 					tb = x1;
 				}else if(x2<x1){
 					tb = x2;
 				}
-				if(tb>(0+0.001f)){
+				if(x1<0.001f){
+					tb = x2;
+				}else if(x2<0.001f){
+					tb = x2;
+				}
+				tb = x2;
+
+				if(fabs(tb-(p*60)<0.1f)){
+
+				if(tb>(1.0f)){
+
 				best.t = tb;
 				best.m = m;
 				best.position = r.eye+r.v*tb;
 
-				//best.position.z = best.position.x*cosf(90.0f)-best.position.y*sinf(90.0f);
-				//best.position.y = best.position.x*sinf(90.0f)+best.position.y*cosf(90.0f);
+				best.normal = (best.position-op)*2.0f;
 
-				Vector temp;
-				temp.x = best.position.x/(p1);
-				temp.y = best.position.y/(p2);
-				temp.z = best.position.z/(p3);
+				best.normal = rotate(best.normal,0);
 
-				best.normal = (((temp-om)*2.0f).normalize());
+				best.normal.x = best.normal.x/(p1);
+				best.normal.y = best.normal.y/(p2);
+				best.normal.z = best.normal.z/(p3);
 
+				best.normal = rotate(best.normal,0);
+
+				best.normal = best.normal.normalize();
 				return best;
 				}
-
-				return best;
 			}
+			*/
+	}
+	return best;
+}
 
 };
 
 object *obs[100];
 int objnum = 0;
-int maxdepth = 7;
+int maxdepth = 5;
 float eps = 0.001f;
-light l(Vector(0.0f , 175.0f , 90.0f) , Color(1.0f, 1.0f , 1.0f));
-Hit firstIntersect(ray r , bool shadow){
+light l(Vector(280.0f , -280.0f , 200.0f) , Color(1.0f, 1.0f , 1.0f));
+
+Vector lampspeed(0.0,0.7f,0);
+Vector elipsspeed(0.4f,0.3f,0);
+float end;
+
+Hit firstIntersect(ray r , float t0 , float t1){
 
 	Hit best;
-	for(int i=0 ; i<objnum ; i++){
-		Hit hit = obs[i]->intersect(r , shadow);
-		if(hit.t>0 && (best.t < 0 || hit.t < best.t)){
-			best = hit;
+		for(int i=0 ; i<objnum ; i++){
+			Hit hit = obs[i]->intersect(r,t0 , t1);
+			if(hit.t>0 && (best.t < 0 || hit.t < best.t)){
+				best = hit;
+			}
 		}
-	}
-
 	return best;
-
 }
 
-Color trace(ray r , int depth){
+Color trace(ray r , int depth , float t0 , float t1){
 	Color outRad(0,0,0);
 
-	bool recurse=false;
-
-	//std::cout<<depth;
 	if(depth>maxdepth) return outRad;
 
-	Hit hit = firstIntersect(r , recurse);
+	Hit hit = firstIntersect(r , t0 , t1);
 
 	if(hit.t<0)return outRad;
 	if(!hit.m->isReflective && !hit.m->isRefractive){
 
-	ray shadowray(hit.position+hit.normal*0.0001f , (l.pos-hit.position).normalize() );
+	ray shadowray(hit.position+hit.normal*0.001f , (l.pos-hit.position).normalize() );
 
-	//Hit shadowHit = firstIntersect(shadowray ,true);
-	//if(shadowHit.t<0 || shadowHit.t > (l.pos-hit.position).Length()){
+	Hit shadowHit = firstIntersect(shadowray , hit.t , t1);
+	if(!hit.m->isReflective && !hit.m->isRefractive){
+	if((shadowHit.t<0 || shadowHit.t > (l.pos-hit.position).Length())){
 
-		float dist = (hit.position-l.pos).Length();
-		dist = fabs(dist/300);
-		Color cinrad = l.weaken(dist);
-		outRad = outRad + hit.m->shade(hit.normal , r.v , l.pos-hit.position , cinrad);
-	//}
+		float dist =hit.t;
 
+		Vector pos;
+		if(dist<end*60){
+			pos = l.pos-lampspeed*dist;
+		}else{
+			pos = l.pos-lampspeed*(end*60);
+		}
+
+		Color cinrad = l.weaken((pos-hit.position).Length()/500);
+
+		outRad = outRad + hit.m->shade(hit.normal , r.v , pos-hit.position , cinrad);
+
+		}
+		}
 	}
-
 	if(hit.m->isReflective){
 		Vector refldir = hit.m->reflect(r.v , hit.normal);
 		ray reflray(hit.position+hit.normal*0.0001f , refldir);
-		outRad = outRad+trace(reflray , depth+1)*hit.m->Fresnel(r.v , hit.normal);
+		outRad = outRad+trace(reflray , depth+1 , hit.t , t1)*hit.m->Fresnel(r.v , hit.normal);
 	}
 
 	if(hit.m->isRefractive){
-
 		Vector refractDir = hit.m->refract(r.v , hit.normal);
 		refractDir.normalize();
 		ray refractRay(hit.position-hit.normal*0.0001f , refractDir);
-		outRad = outRad+trace(refractRay , depth+1)*(Color(1.0f, 1.0f , 1.0f)-hit.m->Fresnel(r.v , hit.normal));
-		/*
-		Vector dir;
-		Vector tnormal=hit.normal;
-		float nt = hit.m->n.r;
-		float cos = -(hit.normal*r.v);
-		if(cos<0){
-			cos = (-1.0f)*cos;
-			tnormal.x = -tnormal.x;
-			tnormal.y = -tnormal.y;
-			nt = 1.0f/nt;
-		}
-
-		float disc;
-		disc = 1.0f-(1.0f-cos*cos)/(nt*nt);
-
-		if(disc>0){
-			r.v.normalize();
-			ray refractRay(hit.position-tnormal*0.0001*(-1.0f), r.v/nt+tnormal*(cos/nt-sqrtf(disc)));
-			//refractRay.eye= hit.position-tnormal*0.01*(-1.0f);
-			//refractRay.v = refractRay.v/nt+tnormal*(cos/nt-sqrtf(disc));
-			refractRay.v.normalize();
-			outRad = outRad+trace(refractRay , depth+1)*(Color(1.0f, 1.0f , 1.0f)-hit.m->Fresnel(r.v , hit.normal));
-		}else if(disc<0){
-			Vector refldir = hit.m->reflect(r.v , tnormal);
-			ray reflectRay( hit.position-tnormal*0.0001 , refldir);
-			outRad = outRad+trace(reflectRay , depth+1)*(Color(1.0f, 1.0f , 1.0f)-hit.m->Fresnel(r.v , hit.normal));
-		}
-
-		*/
-
-
+		outRad = outRad+trace(refractRay , depth+1 , hit.t , t1)*(Color(1.0f, 1.0f , 1.0f)-hit.m->Fresnel(r.v , hit.normal));
 	}
 
 	if(outRad.r>1){
@@ -665,62 +769,56 @@ Color trace(ray r , int depth){
 	return outRad;
 }
 
+
+
 const int screenWidth = 600;	// alkalmazås ablak felbontåsa
 const int screenHeight = 600;
 
 
 Color image[screenWidth*screenHeight];	// egy alkalmazås ablaknyi kÊp
 Color traced[600][600];
+Camera cam(Vector(0,0,-1000) , Vector(0,0,1) , Vector(0,1,0));
+Ellipsoid *elips;
 
+material gold(Color(0.17f , 0.35f , 1.5f) , Color(3.1f, 2.7f, 1.9f) , Color(1,1,1) , Color(1,1,1), 100.0f , true , false);
+material glass(Color(1.5f , 1.5f , 1.5f), Color(0,0,0) , Color(0,0,0) , Color(0,0,0) , 100.0f , false, true);
+material left(Color(0.0f , 0.0f , 0.0f) , Color(1.0f, 0.0f, 1.0f) , Color(1,1,1) , Color(1,1,1), 3000.0f , false, false);
+material right(Color(0.0f , 0.0f , 0.0f) , Color(1.0f, 1.0f, 0.0f) , Color(1,1,1) , Color(1,1,1), 3000.0f , false, false);
+material up(Color(0.0f , 0.0f , 0.0f) , Color(0.0f, 0.0f, 0.0f) , Color(1,1,1) , Color(1,1,1), 3000.0f , false, false);
+material down(Color(0.0f , 0.0f , 0.0f) , Color(0.0f, 0.0f, 0.0f) , Color(1,1,1) , Color(1,1,1), 3000.0f , false, false);
+material forw(Color(0.0f , 0.0f , 0.0f) , Color(0.0f, 0.0f, 0.0f) , Color(1,1,1) , Color(1,1,1), 3000.0f , false, false);
+material back(Color(0.0f , 0.0f , 0.0f) , Color(0.0f, 0.0f, 0.0f) , Color(1,1,1) , Color(1,1,1), 3000.0f , false, false);
+material a(Color(0.0f , 0.0f , 0.0f) , Color(0.0f, 0.0f, 0.0f) , Color(1,0,0) , Color(1,1,1), 3000.0f , false, false);
 
 // Inicializacio, a program futasanak kezdeten, az OpenGL kontextus letrehozasa utan hivodik meg (ld. main() fv.)
 void onInitialization( ) {
 	glViewport(0, 0, screenWidth, screenHeight);
-	Vector v;
-	Vector eye(0.0f,0.0f,-1.0f);
-
-
-	material gold(Color(0.17f , 0.35f , 1.5f) , Color(3.1f, 2.7f, 1.9f) , Color(1,1,1) , Color(1,1,1), 100.0f , true , false);
-	material glass(Color(1.5f , 1.5f , 1.5f), Color(0,0,0) , Color(0,0,0) , Color(0,0,0) , 100.0f , false, true);
-	material c(Color(0.17f , 0.35f , 1.5f) , Color(3.1f, 2.7f, 1.9f) , Color(1,1,1) , Color(1,1,1), 30.0f , false, false);
-	material f(Color(0.17f , 0.35f , 1.5f) , Color(3.1f, 2.7f, 1.9f) , Color(1,1,1) , Color(1,1,1), 30.0f , false, false);
-	material d(Color(0.17f , 0.35f , 1.5f) , Color(3.1f, 2.7f, 1.9f) , Color(1,1,1) , Color(1,1,1), 30.0f , false, false);
-	material a(Color(0.17f , 0.35f , 1.5f) , Color(3.1f, 2.7f, 1.9f) , Color(1,1,1) , Color(1,1,1), 300.0f , false, false);
-	material z(Color(0.17f , 0.35f , 1.5f) , Color(3.1f, 2.7f, 1.9f) , Color(1,1,1) , Color(1,1,1), 30.0f , false, false);
-	material q(Color(0.17f , 0.35f , 1.5f) , Color(3.1f, 2.7f, 1.9f) , Color(1,1,1) , Color(1,1,1), 3000.0f , false, false);
-	material s(Color(0.17f , 0.35f , 1.5f) , Color(3.1f, 2.7f, 1.9f) , Color(1,1,1) , Color(1,1,1), 50.0f , false, false);
-
-	//obs[objnum]= new Sphere(Vector(0.0f, 0.0f ,300.0f) , 167.0f , &gold);
-	//objnum++;
-	obs[objnum]=new Paraboloid(Vector(0,0,260) , 1.0f , 1.0f , 0.001f ,&gold , -1);
+	obs[objnum]=new Paraboloid(Vector(0,0,828) , 1.0f , 1.0f , 28.0f ,&gold , 1);
 	objnum++;
-	//obs[objnum]=new Sphere(Vector(-30.0f , -20.0f , 100.0f) , 30.0f , &glass);
+	//obs[objnum]= new Sphere(Vector(0.0f, 0.0f ,300.0f) , 50.0f , &glass);
 	//objnum++;
 
-	obs[objnum]=new Ellipsoid(Vector(0,-35,80) , 60 , 15 , 15 , &glass);
+	//obs[objnum]=new Sphere(Vector(0.0f , 0.0f , 200.0f) , 150.0f , &gold);
+	//objnum++;
+	elips = new Ellipsoid(Vector(-250,-250,100) , 60.0f , 30.0f , 15.0f , &glass ,elipsspeed , 20.0f);
+	obs[objnum]= elips;
 	objnum++;
 
-	obs[objnum]=new Wall(Vector(200,0,0),Vector(-1, 0 , 0), &c, Color(0,1,1));
+	obs[objnum]=new Wall(Vector(300,0,0),Vector(-1, 0 , 0), &right, Color(0,1,1));
 	objnum++;
-	obs[objnum]=new Wall(Vector(0,200,0) , Vector(0,-1,0) , &f , Color(0.7,0.6,0.7));
+	obs[objnum]=new Wall(Vector(0,300,0) , Vector(0,-1,0) , &up , Color(0.7,0.6,0.7));
 	objnum++;
-	obs[objnum]= new Wall(Vector(-200 , 0,0) , Vector(1,0,0), &a, Color(1, 0 , 1));
+	obs[objnum]= new Wall(Vector(-300 , 0,0) , Vector(1,0,0), &left, Color(1, 0 , 1));
 	objnum++;
-
-	obs[objnum]= new Wall(Vector(0,-200,0) , Vector(0,1,0) , &z, Color(0.5, 0.7, 0.9));
+	obs[objnum]= new Wall(Vector(0,-300,0) , Vector(0,1,0) , &down, Color(0.5, 0.7, 0.9));
 	objnum++;
-
-	obs[objnum]=new Wall(Vector(0,0,300) , Vector(0,0,-1) , &d, Color(1,1,0));
-	objnum++;
-	obs[objnum]=new Wall(Vector(0,0,-100) , Vector(0,0,1),&q, Color(0.8, 0.4 , 0.9));
+	//obs[objnum]=new Wall(Vector(0,0,600) , Vector(0,0,-1) , &forw, Color(1,1,0));
+	//objnum++;
+	obs[objnum]=new Wall(Vector(0,0,0) , Vector(0,0,1),&back, Color(0.7, 0.7, 0.7));
 	objnum++;
 
-	for (int i = 0; i < screenHeight; i++) {
-	        for (int j = 0; j < screenWidth; j++) {
-	            traced[i][j] = trace(ray(eye, (Vector((i / 300.0f - 1.0f), (j / 300.0f - 1.0f), 0.0f) - eye).normalize()), 0);
-	        }
-	    }
 
+/*
 	int db = 0;
 	    for (int i = 0; i < screenHeight; i++) {
 	        for (int j = 0; j < screenWidth; j++) {
@@ -728,7 +826,7 @@ void onInitialization( ) {
 	        }
 	    }
 
-
+*/
 }
 
 // Rajzolas, ha az alkalmazas ablak ervenytelenne valik, akkor ez a fuggveny hivodik meg
@@ -748,8 +846,21 @@ void onDisplay( ) {
 
 // Billentyuzet esemenyeket lekezelo fuggveny (lenyomas)
 void onKeyboard(unsigned char key, int x, int y) {
-    if (key == 'd') glutPostRedisplay( ); 		// d beture rajzold ujra a kepet
+    if (key == 0x20){
+    	end = glutGet(GLUT_ELAPSED_TIME);
+    	end = end/1000;
+    	l.pos = l.pos+(lampspeed*(end*60));
+    	elips->o = elips->o+(elipsspeed*(end*60));
 
+    	for (int i = 0; i < screenHeight; i++) {
+    		for (int j = 0; j < screenWidth; j++) {
+    		//traced[i][j] = trace(ray(eye, (Vector((i / 300.0f - 1.0f), (j / 300.0f - 1.0f), 0.0f)-eye ).normalize()), 0);
+    		//traced[i][j]=trace(cam.getRay(i,j) , 0);
+    		image[i*600+j]=trace(cam.getRay(j,i), 0 , 0 , end);
+    		}
+    	}
+    	glutPostRedisplay( ); 		// d beture rajzold ujra a kepet
+    }
 }
 
 // Billentyuzet esemenyeket lekezelo fuggveny (felengedes)
@@ -771,8 +882,9 @@ void onMouseMotion(int x, int y)
 
 // `Idle' esemenykezelo, jelzi, hogy az ido telik, az Idle esemenyek frekvenciajara csak a 0 a garantalt minimalis ertek
 void onIdle( ) {
-     long time = glutGet(GLUT_ELAPSED_TIME);		// program inditasa ota eltelt ido
 
+   	// program inditasa ota eltelt ido
+    // anim.animate(glutGet(GLUT_ELAPSED_TIME));
 }
 
 // ...Idaig modosithatod
