@@ -154,8 +154,6 @@ public:
 
 	material(Color n , Color k , Color kd , Color  ks , float shininess ,  bool isReflective , bool isRefractive ){
 
-		//F0 = (((n - Color(1.0f, 1.0f, 1.0f)) ^ 2.0f) + (k ^ 2.0f)) / (((n + Color(1.0f, 1.0f, 1.0f)) ^ 2.0f) + (k ^ 2.0f));
-
 		F0.r = (powf((n.r-1),2.0f)+powf(k.r,2.0f))/(powf((n.r+1),2.0f)+powf(k.r , 2.0f));
 		F0.g = (powf((n.g-1),2.0f)+powf(k.g,2.0f))/(powf((n.g+1),2.0f)+powf(k.g , 2.0f));
 		F0.b = (powf((n.b-1),2.0f)+powf(k.b,2.0f))/(powf((n.b+1),2.0f)+powf(k.b , 2.0f));
@@ -180,11 +178,7 @@ public:
 		Vector tnormal;
 		if(cos<0){
 			normal = normal*(-1.0f);
-			//normal.x = (-1.0f)*normal.x;
-			//normal.y = (-1.0f)*normal.y;
-			//normal.z = (-1.0f)*normal.z;
 			nt = 1.0f/nt;
-			//cos = -(normal*inDir);
 			cos = (-1.0f)*cos;
 		}else{lightspeed = 1.0f;}
 
@@ -290,18 +284,16 @@ struct light{
 class object{
 public:
 	material *m;
-   virtual Hit intersect(ray r , float t0 , float t1)=0;
-   virtual ~object(){
+    virtual Hit intersect(ray r , float t0 , float t1)=0;
+    virtual ~object(){
 
-   }
+    }
 };
 
 class Wall : public object{
 private:
 	Vector normal;
 	Vector p0;
-	Vector p1;
-	Vector p2;
 	Color stripe;
 	Color paint;
 public:
@@ -323,17 +315,17 @@ public:
 		double nx = normal.x;
 		double ny = normal.y;
 		double nz = normal.z;
-		double Psx = p0.x;
-		double Psy = p0.y;
-		double Psz = p0.z;
-		double dvx = r.v.x;
-		double dvy = r.v.y;
-		double dvz = r.v.z;
-		double Pex = r.eye.x;
-		double Pey = r.eye.y;
-		double Pez = r.eye.z;
-		double tb = -1.0 * ((nx * Pex - nx * Psx + ny * Pey - ny * Psy + nz * Pez - nz
-		* Psz) / (nx * dvx + ny * dvy + nz * dvz));
+		double posx = p0.x;
+		double posy = p0.y;
+		double posz = p0.z;
+		double vx = r.v.x;
+		double vy = r.v.y;
+		double vz = r.v.z;
+		double eyex = r.eye.x;
+		double eyey = r.eye.y;
+		double eyez = r.eye.z;
+		double tb = -1.0 * ((nx * eyex - nx * posx + ny * eyey - ny * posy + nz * eyez - nz
+					* posz) / (nx * vx + ny * vy + nz * vz));
 
 		if(tb>0.0001f){
 			best.t = tb ;
@@ -354,53 +346,6 @@ public:
 		}
 };
 
-class Sphere :public object{
-public:
-	Vector o;
-	float rad;
-
-	Sphere(Vector o  , float r , material *mat){
-		m=mat;
-		this->o = o;
-		this->rad = r;
-	}
-
-	Hit intersect(ray r , float t0 , float t1){
-		Hit best;
-
-		float tb;
-		float a = r.v*r.v;
-		float b = 2*((r.eye-o)*r.v);
-		float c = ((r.eye-o)*(r.eye-o))-powf(rad,2.0f);
-		float disc = powf(b,2.0f)-(4*a*c);
-
-		if(disc<0.0001){
-
-			return best;
-		}
-		float x1 = (-b+sqrt(disc))/(2*a);
-		float x2 = (-b-sqrt(disc))/(2*a);
-
-		if(x1<(0+0.001f)){
-			tb = x2;
-		}else if(x2<(0+0.001f)){
-			tb = x1;
-		}else if(x1<x2){
-			tb = x1;
-		}else if(x2<x1){
-			tb = x2;
-		}
-		if(tb>(0+0.1f)){
-		best.t = tb;
-		best.m = m;
-		best.position = r.eye+r.v*tb;
-		best.normal = ((best.position-o)*2.0f).normalize();
-		return best;
-		}
-
-		return best;
-	}
-};
 
 class Paraboloid : public object{
 public:
@@ -482,8 +427,6 @@ public:
 
 			}
 				return best;
-
-
 	}
 };
 
@@ -507,23 +450,6 @@ public:
 		m=mat;
 		this->velocity = velocity;
 	}
-	Vector rotate(Vector v ){
-		Vector temp;
-		temp.x = v.x*cos-v.y*sin;
-		temp.y = v.x*sin+v.y*cos;
-		temp.z=v.z;
-
-		temp.x = temp.x*cos-temp.z*sin;
-		temp.z = -temp.x*sin+temp.z*cos;
-		//temp.y = v.y;
-
-		temp.y = temp.y*cos-temp.z*sin;
-		temp.z = temp.y*sin+temp.z*cos;
-		//temp.x = temp.x;
-		//temp = v;
-		return temp;
-}
-
 
 	Hit intersect(ray r , float t0 , float t1){
 
@@ -535,7 +461,7 @@ public:
 		Vector orot;
 
 		for(float p = t0 ; p<(t1*60) ; p+=0.35f){
-			op = o;//-(velocity*p);
+			op = o-(velocity*p);
 
 			p0.x = r.eye.x*cos-r.eye.y*sin;
 			p0.y = r.eye.x*sin+r.eye.y*cos;
@@ -609,80 +535,6 @@ public:
 			   best.normal = best.normal.normalize();
 			   return best;
 		   }
-
-/*
-		Vector vin = rotate(r.v,0);
-
-		Vector v;
-		v.x = vin.x/(p1);
-		v.y = vin.y/(p2);
-		v.z = vin.z/(p3);
-
-		Vector orot = rotate(op,0);
-
-		Vector om;
-		om.x = orot.x/(p1);
-		om.y = orot.y/(p2);
-		om.z = orot.z/(p3);
-
-		Vector pr =rotate(r.eye,0);
-
-		Vector pm;
-		pr.x = pr.x/(p1);
-		pr.y = pr.y/(p2);
-		pr.z = pr.z/(p3);
-
-		pm = pr-om;
-
-				float tb;
-
-				float a = v*v;
-				float b = 2.0f*(pm*v);
-				float c = (pm*pm)-1.0f;
-
-				float disc = powf(b,2)-(4*a*c);
-
-				if(disc<0.001f){
-					return best;
-				}
-				float x1 = (-b+sqrt(disc))/(2.0f*a);
-				float x2 = (-b-sqrt(disc))/(2.0f*a);
-
-				if(x1<x2){
-					tb = x1;
-				}else if(x2<x1){
-					tb = x2;
-				}
-				if(x1<0.001f){
-					tb = x2;
-				}else if(x2<0.001f){
-					tb = x2;
-				}
-				tb = x2;
-
-				if(fabs(tb-(p*60)<0.1f)){
-
-				if(tb>(1.0f)){
-
-				best.t = tb;
-				best.m = m;
-				best.position = r.eye+r.v*tb;
-
-				best.normal = (best.position-op)*2.0f;
-
-				best.normal = rotate(best.normal,0);
-
-				best.normal.x = best.normal.x/(p1);
-				best.normal.y = best.normal.y/(p2);
-				best.normal.z = best.normal.z/(p3);
-
-				best.normal = rotate(best.normal,0);
-
-				best.normal = best.normal.normalize();
-				return best;
-				}
-			}
-			*/
 	}
 	return best;
 }
@@ -692,11 +544,11 @@ public:
 object *obs[100];
 int objnum = 0;
 int maxdepth = 5;
-float eps = 0.001f;
-light l(Vector(280.0f , -280.0f , 200.0f) , Color(1.0f, 1.0f , 1.0f));
 
-Vector lampspeed(0.0,0.7f,0);
-Vector elipsspeed(0.4f,0.3f,0);
+light l(Vector(-290.0f , 280.0f , 300.0f) , Color(1.0f, 1.0f , 1.0f));
+
+Vector lampspeed(0.98,0.0f,-0.3f);
+Vector elipsspeed(0.3f,0.4f,0);
 float end;
 
 Hit firstIntersect(ray r , float t0 , float t1){
@@ -721,26 +573,19 @@ Color trace(ray r , int depth , float t0 , float t1){
 	if(hit.t<0)return outRad;
 	if(!hit.m->isReflective && !hit.m->isRefractive){
 
-	ray shadowray(hit.position+hit.normal*0.001f , (l.pos-hit.position).normalize() );
-
-	Hit shadowHit = firstIntersect(shadowray , hit.t , t1);
-	if(!hit.m->isReflective && !hit.m->isRefractive){
-	if((shadowHit.t<0 || shadowHit.t > (l.pos-hit.position).Length())){
-
-		float dist =hit.t;
-
-		Vector pos;
-		if(dist<end*60){
-			pos = l.pos-lampspeed*dist;
-		}else{
-			pos = l.pos-lampspeed*(end*60);
-		}
-
-		Color cinrad = l.weaken((pos-hit.position).Length()/500);
-
-		outRad = outRad + hit.m->shade(hit.normal , r.v , pos-hit.position , cinrad);
-
-		}
+		ray shadowray(hit.position+hit.normal*0.001f , (l.pos-hit.position).normalize() );
+		Hit shadowHit = firstIntersect(shadowray , hit.t , t1);
+		if((shadowHit.t<0 || shadowHit.t > (l.pos-hit.position).Length())){
+			float dist =hit.t;
+			dist += ((hit.position-(l.pos-lampspeed*dist)).Length());
+			Vector pos;
+			if(dist<end*60){
+				pos = l.pos-lampspeed*dist;
+			}else{
+				pos = l.pos-lampspeed*(end*60);
+			}
+			Color cinrad = l.weaken((pos-hit.position).Length()/800);
+			outRad = outRad + hit.m->shade(hit.normal , r.v , pos-hit.position , cinrad);
 		}
 	}
 	if(hit.m->isReflective){
@@ -786,22 +631,15 @@ material left(Color(0.0f , 0.0f , 0.0f) , Color(1.0f, 0.0f, 1.0f) , Color(1,1,1)
 material right(Color(0.0f , 0.0f , 0.0f) , Color(1.0f, 1.0f, 0.0f) , Color(1,1,1) , Color(1,1,1), 3000.0f , false, false);
 material up(Color(0.0f , 0.0f , 0.0f) , Color(0.0f, 0.0f, 0.0f) , Color(1,1,1) , Color(1,1,1), 3000.0f , false, false);
 material down(Color(0.0f , 0.0f , 0.0f) , Color(0.0f, 0.0f, 0.0f) , Color(1,1,1) , Color(1,1,1), 3000.0f , false, false);
-material forw(Color(0.0f , 0.0f , 0.0f) , Color(0.0f, 0.0f, 0.0f) , Color(1,1,1) , Color(1,1,1), 3000.0f , false, false);
 material back(Color(0.0f , 0.0f , 0.0f) , Color(0.0f, 0.0f, 0.0f) , Color(1,1,1) , Color(1,1,1), 3000.0f , false, false);
 material a(Color(0.0f , 0.0f , 0.0f) , Color(0.0f, 0.0f, 0.0f) , Color(1,0,0) , Color(1,1,1), 3000.0f , false, false);
 
-// Inicializacio, a program futasanak kezdeten, az OpenGL kontextus letrehozasa utan hivodik meg (ld. main() fv.)
 void onInitialization( ) {
 	glViewport(0, 0, screenWidth, screenHeight);
-	obs[objnum]=new Paraboloid(Vector(0,0,828) , 1.0f , 1.0f , 28.0f ,&gold , 1);
+	obs[objnum]= new Paraboloid(Vector(0,0,828.0f) , 1.0f , 1.0f , 28.0f ,&gold , 1);
 	objnum++;
-	//obs[objnum]= new Sphere(Vector(0.0f, 0.0f ,300.0f) , 50.0f , &glass);
-	//objnum++;
-
-	//obs[objnum]=new Sphere(Vector(0.0f , 0.0f , 200.0f) , 150.0f , &gold);
-	//objnum++;
-	elips = new Ellipsoid(Vector(-250,-250,100) , 60.0f , 30.0f , 15.0f , &glass ,elipsspeed , 20.0f);
-	obs[objnum]= elips;
+	elips = new Ellipsoid(Vector(-200.0f,-250.0f,100.0f) , 60.0f , 30.0f , 15.0f , &glass ,elipsspeed , 20.0f);
+	obs[objnum] = elips;
 	objnum++;
 
 	obs[objnum]=new Wall(Vector(300,0,0),Vector(-1, 0 , 0), &right, Color(0,1,1));
@@ -810,41 +648,21 @@ void onInitialization( ) {
 	objnum++;
 	obs[objnum]= new Wall(Vector(-300 , 0,0) , Vector(1,0,0), &left, Color(1, 0 , 1));
 	objnum++;
-	obs[objnum]= new Wall(Vector(0,-300,0) , Vector(0,1,0) , &down, Color(0.5, 0.7, 0.9));
+	obs[objnum]=new  Wall(Vector(0,-300,0) , Vector(0,1,0) , &down, Color(0.5, 0.7, 0.9));
 	objnum++;
-	//obs[objnum]=new Wall(Vector(0,0,600) , Vector(0,0,-1) , &forw, Color(1,1,0));
-	//objnum++;
 	obs[objnum]=new Wall(Vector(0,0,0) , Vector(0,0,1),&back, Color(0.7, 0.7, 0.7));
 	objnum++;
 
-
-/*
-	int db = 0;
-	    for (int i = 0; i < screenHeight; i++) {
-	        for (int j = 0; j < screenWidth; j++) {
-	            image[db++] = traced[j][i];
-	        }
-	    }
-
-*/
 }
 
-// Rajzolas, ha az alkalmazas ablak ervenytelenne valik, akkor ez a fuggveny hivodik meg
 void onDisplay( ) {
-    glClearColor(0.1f, 0.2f, 0.3f, 1.0f);		// torlesi szin beallitasa
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // kepernyo torles
-
-    // ..
-
-    // Peldakent atmasoljuk a kepet a rasztertarba
+    glClearColor(0.1f, 0.2f, 0.3f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glDrawPixels(screenWidth, screenHeight, GL_RGB, GL_FLOAT, image);
-
-
-    glutSwapBuffers();     				// Buffercsere: rajzolas vege
+    glutSwapBuffers();
 
 }
 
-// Billentyuzet esemenyeket lekezelo fuggveny (lenyomas)
 void onKeyboard(unsigned char key, int x, int y) {
     if (key == 0x20){
     	end = glutGet(GLUT_ELAPSED_TIME);
@@ -854,12 +672,14 @@ void onKeyboard(unsigned char key, int x, int y) {
 
     	for (int i = 0; i < screenHeight; i++) {
     		for (int j = 0; j < screenWidth; j++) {
-    		//traced[i][j] = trace(ray(eye, (Vector((i / 300.0f - 1.0f), (j / 300.0f - 1.0f), 0.0f)-eye ).normalize()), 0);
-    		//traced[i][j]=trace(cam.getRay(i,j) , 0);
-    		image[i*600+j]=trace(cam.getRay(j,i), 0 , 0 , end);
+    			image[i*600+j]=trace(cam.getRay(j,i), 0 , 0 , end);
     		}
     	}
-    	glutPostRedisplay( ); 		// d beture rajzold ujra a kepet
+    	glutPostRedisplay( );
+
+    	for(int i=0 ; i<objnum ; i++){
+    		delete obs[i];
+    	}
     }
 }
 
