@@ -130,11 +130,17 @@ public:
 	float kd[4];
 	float ks[4];
 	float shininess;
-
+	Vector pos;
+	Vector velocity;
+	float prevt;
 	virtual void draw(){
 
 	}
 	virtual ~Object(){
+
+	}
+
+	virtual void blowup(){
 
 	}
 };
@@ -143,7 +149,6 @@ class Sphere :public Object{
 public:
 	Vector center;
 	float radius;
-	Vector pos;
 	void draw(){
 		float x,y,z;
 		Vector du;
@@ -173,6 +178,17 @@ public:
 		}
 		glEnd();
 	}
+
+	void blowup(){
+		float time = glutGet(GLUT_ELAPSED_TIME);
+		float t = (time-prevt)/1000;
+
+		pos.x+=velocity.x*t;
+		velocity.y-=9.81*t;
+		pos.y += velocity.y*t;
+		pos.z += velocity.z*t;
+		prevt=time;
+	}
 };
 
 class Cone :public Object{
@@ -180,7 +196,6 @@ public:
 
 	float radius;
 	float param;
-	Vector pos;
 
 	void draw(){
 		float x,y,z;
@@ -212,13 +227,16 @@ public:
 		}
 		glEnd();
 	}
+
+	void blowup(){
+
+	}
 };
 
 class Cylinder :public Object{
 public:
 	float radius;
 	float height;
-	Vector pos;
 
 	void draw(){
 		float x,y,z;
@@ -248,12 +266,14 @@ public:
 		}
 		glEnd();
 	}
+
+	void blowup(){
+
+	}
 };
 
 class Csirguru :public Object{
 	float angle;
-	Vector pos;
-	Vector velocity;
 	Sphere head;
 	Sphere lefteye;
 	Sphere righteye;
@@ -266,8 +286,11 @@ class Csirguru :public Object{
 	float accel;
 	float anglevelocity;
 	float verticalvelocity;
+
 public:
+	bool blownup;
 	Csirguru(Vector pos , Vector dir){
+		blownup = false;
 		verticalvelocity = dir.y;
 		anglevelocity = 35.0f;
 		accel = 0;
@@ -364,7 +387,8 @@ public:
 	}
 
 	void draw(){
-
+	if(!blownup){
+		jump();
 		setMaterial(head.kd , head.ks , head.shininess);
 
 		glPushMatrix();
@@ -435,8 +459,18 @@ public:
 
 		}
 
-		glPopMatrix();
-		glPopMatrix();
+			glPopMatrix();
+			glPopMatrix();
+		}
+
+		if(blownup){
+			head.blowup();
+			setMaterial(head.kd , head.ks , head.shininess);
+			glPushMatrix();
+			glTranslatef(head.pos.x , head.pos.y , head.pos.z);
+			head.draw();
+			glPopMatrix();
+		}
 	}
 
 	void upanddown(){
@@ -458,7 +492,6 @@ public:
 			float time=glutGet(GLUT_ELAPSED_TIME);
 			float t = (time-prevt)/1000.0f;
 
-
 		pos.x+= velocity.x*t;
 		verticalvelocity-= 9.81f*t;
 		pos.y+= (verticalvelocity*t);
@@ -472,17 +505,13 @@ public:
 
 		prevt=time;
 		}
-		glutPostRedisplay();
-
 	}
 
 	void blowup(){
-	   float time = glutGet(GLUT_ELAPSED_TIME);
-	   float t = (time-prevt)/1000;
-
-
-
-	   prevt=time;
+		blownup = true;
+		head.velocity = Vector(10.0f , 10.0f , 0.0f);
+		head.pos = Vector(pos.x , pos.y+leg[0].radius+leg[1].height+leg[2].height , pos.z);
+		head.prevt = glutGet(GLUT_ELAPSED_TIME);
 	}
 
 
@@ -494,7 +523,7 @@ const int screenHeight = 600;
 
 Color image[screenWidth*screenHeight];	// egy alkalmazås ablaknyi kÊp
 
-Csirguru csirg(Vector(-20,0.0,-20) , Vector(2.0f, 10.0f,0.0f));
+Csirguru csirg(Vector(-20,0.0,-50) , Vector(2.0f, 10.0f,3.0f));
 
 
 // Inicializacio, a program futasanak kezdeten, az OpenGL kontextus letrehozasa utan hivodik meg (ld. main() fv.)
@@ -569,7 +598,7 @@ void onDisplay( ) {
 // Billentyuzet esemenyeket lekezelo fuggveny (lenyomas)
 void onKeyboard(unsigned char key, int x, int y) {
     if (key == 'd'){
-
+    	csirg.blowup();
     	glutPostRedisplay( ); 		// d beture rajzold ujra a kepet
     }
 
@@ -595,7 +624,8 @@ void onMouseMotion(int x, int y)
 // `Idle' esemenykezelo, jelzi, hogy az ido telik, az Idle esemenyek frekvenciajara csak a 0 a garantalt minimalis ertek
 void onIdle( ) {
 	//csirg.upanddown();
-	csirg.jump();
+	//csirg.blowup();
+	glutPostRedisplay();
 }
 
 // ...Idaig modosithatod
