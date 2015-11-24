@@ -56,7 +56,6 @@
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <GL/glut.h>
-#include <iostream>
 #endif
 
 
@@ -409,11 +408,11 @@ public:
 
 	void draw(){
 
-		glPushMatrix();
+
 
 	if(!blownup){
 		jump();
-
+		glPushMatrix();
 		glTranslatef(pos.x , pos.y , pos.z);
 
 		rotation = atanf(velocity.x/velocity.z);
@@ -452,12 +451,12 @@ public:
 			glPopMatrix();
 
 			glPushMatrix();
-				glTranslatef(-head.radius/4 , +head.radius/4 , head.radius-lefteye.radius);
+				glTranslatef(-head.radius/4 , +head.radius/4 , head.radius-lefteye.radius/2);
 				lefteye.draw();
 			glPopMatrix();
 
 			glPushMatrix();
-				glTranslatef(+head.radius/4 , +head.radius/4, head.radius-righteye.radius);
+				glTranslatef(+head.radius/4 , +head.radius/4, head.radius-righteye.radius/2);
 				righteye.draw();
 				glPopMatrix();
 
@@ -525,12 +524,10 @@ public:
 				rowel[i].draw();
 				glPopMatrix();
 			}
+			}else{
+				active =false;
 			}
 		}
-
-
-		glPopMatrix();
-
 }
 
 	void upanddown(){
@@ -639,10 +636,11 @@ private:
 
 public:
 	Bomb(){
+		prevt = 0;
 		isfall = false;
 		land = false;
 		velocity.y = 2.0f;
-		pos = Vector(0,50,0);
+		pos = Vector(0,30,0);
 		body.radius = 2.0f;
 		body.kd[0]=0.0f;
 		body.kd[1]=0.0f;
@@ -680,8 +678,8 @@ public:
 		if(isfall){
 			fall();
 			if(pos.y<0){
-				pos.y=50.0f;
-				velocity.y=2.0f;
+				pos.y=30.0f;
+				velocity.y=1.0f;
 				isfall=false;
 				land = true;
 			}
@@ -693,7 +691,6 @@ public:
 		glTranslatef(0,body.radius+wick.height-body.radius/8 , 0);
 		glRotatef(90,1,0,0);
 		wick.draw();
-
 		glPopMatrix();
 	}
 
@@ -733,46 +730,42 @@ public:
 
 class Game{
 private:
-	Csirguru csirbox[20];
+	Csirguru csirbox[15];
 	Bomb bomb;
 	int count;
 	float prevt;
 public:
 	Game(){
-		prevt = glutGet(GLUT_ELAPSED_TIME);
 		count=0;
-	}
-	void addCsirguru(Vector pos , Vector velocity){
-		csirbox[count]=Csirguru(pos , velocity);
-		count++;
+		prevt=0;
 	}
 
 	void step(){
 
+
 		float time = glutGet(GLUT_ELAPSED_TIME);
 
-		if(((time-prevt)>=1000)&& count<20){
-			csirbox[count]=Csirguru(Vector(bomb.pos.x , 0 , bomb.pos.z) , Vector(1,10,1));
+		if(((time-prevt)>=1000)&& count<15){
+			csirbox[count]=Csirguru(Vector(bomb.pos.x , 0 , bomb.pos.z) , randomVelocity());
 			count++;
 			prevt = time;
 		}
 
 		bomb.draw();
 
+
 		float distance;
 		for(int i =0 ; i<count ; i++){
 			if(bomb.isLand()){
 				distance=(bomb.pos-csirbox[i].pos).Length();
-				if(distance<10.0f && !csirbox[i].blownup){
+				if(distance<10.0f && !csirbox[i].blownup && csirbox[i].active){
 					csirbox[i].blowup();
 				}
 			}
-			csirbox[i].draw();
+			if(csirbox[i].active){
+				csirbox[i].draw();
+			}
 		}
-	}
-
-	void killcsirguru(int num){
-		csirbox[num].blowup();
 	}
 
 	void moveBomb(char dir){
@@ -786,8 +779,8 @@ const int screenHeight = 600;
 
 Color image[screenWidth*screenHeight];	// egy alkalmazås ablaknyi kÊp
 
-//Csirguru csirg(Vector(0,0.0,0) , Vector(-5.0f, 10.0f , -5.0f));
 Game game;
+
 
 // Inicializacio, a program futasanak kezdeten, az OpenGL kontextus letrehozasa utan hivodik meg (ld. main() fv.)
 void onInitialization( ) {
@@ -817,7 +810,9 @@ void onInitialization( ) {
 	glEnable(GL_NORMALIZE);
 	glEnable(GL_LIGHTING);
 
-	game.addCsirguru(Vector(0,0,0) , Vector(0,0,0));
+	//game.addCsirguru(Vector(0,0,0) , Vector(0,0,0));
+	//Csirguru cs(Vector(0,0,0) , Vector(10,10,10));
+	//box[0]=cs;
 
 }
 
@@ -830,7 +825,7 @@ void onDisplay( ) {
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    gluLookAt(0, 50 , 100 ,   0, 0, -1,   0, 1 , 0);
+    gluLookAt(0, 20 , 100 ,   0, 0, -1,   0, 1 , 0);
 
     float ka[4] = {0.5f, 0.5f, 0.5f ,1};
     float kd[4] = {0.8 , 0.8 , 0.8 , 1};
@@ -855,6 +850,7 @@ void onDisplay( ) {
     glEnd();
 
     game.step();
+
     glutSwapBuffers();     				// Buffercsere: rajzolas vege
 
 }
@@ -862,6 +858,7 @@ void onDisplay( ) {
 // Billentyuzet esemenyeket lekezelo fuggveny (lenyomas)
 void onKeyboard(unsigned char key, int x, int y) {
     	game.moveBomb(key);
+    	glutPostRedisplay();
 }
 
 // Billentyuzet esemenyeket lekezelo fuggveny (felengedes)
