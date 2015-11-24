@@ -147,9 +147,15 @@ public:
 	Vector pos;
 	Vector velocity;
 	float prevt;
+	bool active;
 	virtual void draw(){
 
 	}
+
+	Object(){
+		active=true;
+	}
+
 	virtual ~Object(){
 
 	}
@@ -157,13 +163,16 @@ public:
 	virtual void blowup(){
 		float time = glutGet(GLUT_ELAPSED_TIME);
 		float t = (time-prevt)/1000;
-
+		active = true;
 		pos.x+=velocity.x*t;
 		velocity.y-=9.81*t;
 		pos.y += velocity.y*t;
 		pos.z += velocity.z*t;
 		rotation+=1000.0f*t;
 		prevt=time;
+		if(pos.y<(-0.5f)){
+			active=false;
+		}
 	}
 };
 
@@ -296,7 +305,7 @@ class Csirguru :public Object{
 	float accel;
 	float anglevelocity;
 	float verticalvelocity;
-	bool active;
+
 
 public:
 	bool blownup;
@@ -402,8 +411,6 @@ public:
 
 		glPushMatrix();
 
-
-
 	if(!blownup){
 		jump();
 
@@ -468,7 +475,7 @@ public:
 		}
 
 		if(blownup){
-
+		if(head.active){
 			for(int i =0 ; i<3 ; i++){
 				leg[i].blowup();
 				glPushMatrix();
@@ -518,9 +525,13 @@ public:
 				rowel[i].draw();
 				glPopMatrix();
 			}
+			}
 		}
 
-	}
+
+		glPopMatrix();
+
+}
 
 	void upanddown(){
 			float time = glutGet(GLUT_ELAPSED_TIME);
@@ -745,14 +756,17 @@ public:
 			count++;
 			prevt = time;
 		}
+
 		bomb.draw();
 
-		if(bomb.isLand()){
-			csirbox[0].blowup();
-			bomb.setLand(false);
-		}
-
+		float distance;
 		for(int i =0 ; i<count ; i++){
+			if(bomb.isLand()){
+				distance=(bomb.pos-csirbox[i].pos).Length();
+				if(distance<10.0f && !csirbox[i].blownup){
+					csirbox[i].blowup();
+				}
+			}
 			csirbox[i].draw();
 		}
 	}
