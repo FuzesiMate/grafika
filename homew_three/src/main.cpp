@@ -44,6 +44,7 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <stdlib.h>
+#include <iostream>
 
 #if defined(__APPLE__)
 #include <OpenGL/gl.h>
@@ -90,6 +91,10 @@ struct Vector {
 	return Vector(y*v.z-z*v.y, z*v.x - x*v.z, x*v.y - y*v.x);
    }
    float Length() { return sqrt(x * x + y * y + z * z); }
+
+   Vector operator/(const float f){
+	   return Vector(x/f , y/f , z/f);
+   }
 };
 
 //--------------------------------------------------------
@@ -115,6 +120,13 @@ struct Color {
    }
 };
 
+enum State{
+	PREPARE,
+	INAIR,
+	LAND,
+	BLOWUP
+};
+
 void setMaterial(float *kd , float *ks , float shininess){
 	glMaterialfv(GL_FRONT , GL_DIFFUSE , kd);
 	glMaterialfv(GL_FRONT , GL_SPECULAR , ks);
@@ -128,9 +140,10 @@ Vector randomVelocity(){
 		dir = -1;
 	}
 
-	velocity.x = dir*(rand()%5+1);
-	velocity.y = rand()%10+10;
-	velocity.z = dir*(rand()%5+1);
+	velocity.x = dir*((rand()%5+1)+dir*(rand()%3+1));
+	velocity.y = 10.0f;
+	velocity.z = dir*((rand()%5+1)+dir*(rand()%3+1));
+
 	return velocity;
 }
 
@@ -147,12 +160,19 @@ public:
 	Vector velocity;
 	float prevt;
 	bool active;
+	float deltau;
+	float deltav;
 	virtual void draw(){
 
 	}
 
 	Object(){
 		active=true;
+		deltau=1.0f;
+		deltav = 1.0f;
+		for(int i = 0 ; i<4 ; i++){
+			ka[i]=1.0f;
+		}
 	}
 
 	virtual ~Object(){
@@ -175,23 +195,197 @@ public:
 	}
 };
 
+class Body :public Object{
+	public:
+		float radius;
+		Vector cps[4][7];
+		Body(float rad=1.0f){
+
+			radius = rad;
+
+			float div = 1.4f;
+			float r = radius;
+			float y = 0;
+			float z = -5.0f;
+
+			r = radius/10.0f;
+
+			cps[0][0]=Vector(0,-r/2+y,z);
+			cps[0][1]=Vector(r/2,-r/2+y,z);
+			cps[0][2]=Vector(r ,0+y,z);
+			cps[0][3]=Vector(0,5*r,z);
+			cps[0][4]=Vector(-(r) , 0+y , z);
+			cps[0][5]=Vector(-(r/2) , -r/2+y ,z);
+			cps[0][6]=Vector(0,-r/2+y,z);
+
+			r = radius;
+
+			r = radius;
+			z = 0;
+			y = 0;
+			for(int i = 1 ; i<4; i++){
+					cps[i][0]=Vector(0,-r/2+y,z);
+					cps[i][1]=Vector(r/1.5,-r/2+y,z);
+					cps[i][2]=Vector(r/2 ,0+y,z);
+					cps[i][3]=Vector(0,r+y,z);
+					cps[i][4]=Vector(-(r/1.5) , 0+y , z);
+					cps[i][5]=Vector(-(r/2) , -r/2+y ,z);
+					cps[i][6]=Vector(0,-r/2+y,z);
+				z+=3.5f;
+				y+=3.5f;
+				r-=radius/2;
+			}
+
+		}
+
+		void draw(){
+			setMaterial(kd , ks , shininess);
+			Vector point;
+
+			glBegin(GL_POLYGON);
+			for(float t = 0 ; t<=1.0f ; t+=0.08f){
+				point=bezier(t,0);
+				glVertex3f(point.x , point.y , point.z);
+				glNormal3f(0,0,-1);
+			}
+			glEnd();
+
+			for(float t = 0 ; t<=1.0f ; t+=0.08f){
+				for(int i = 0 ; i<2 ; i++){
+					 glBegin(GL_QUADS);
+					 for(float ct = i ; ct<=(i+1) ; ct+=0.08f){
+						point = catmull(ct , t , i , false);
+						glVertex3f(point.x , point.y , point.z);
+						point = catmull(ct , t+0.08 , i , false);
+						glVertex3f(point.x , point.y , point.z);
+						point = catmull(ct+0.08 , t+0.08 , i, false);
+						glVertex3f(point.x , point.y , point.z);
+						point = catmull(ct+0.08, t , i , false);
+						glVertex3f(point.x , point.y , point.z);
+
+						Vector normal = catmull(ct,t,i,true)%(bezier(t,i)-bezier(t+0.08 , i));
+						glNormal3f(normal.x , normal.y , normal.z);
+					}
+					 glEnd();
+				}
+			}
+
+	}
+
+		float B(int i , float t){
+			int n = 6;
+			float choose = 1.0f;
+			for(int j = 1 ; j<=i ; j++){
+				choose*=(float)(n-j+1)/j;
+			}
+			return choose*powf(t,i)*powf(1-t , n-i);
+		}
+
+		Vector bezier(float t , int slice){
+			Vector result(0,0,0);
+			for(int i = 0 ; i<7 ; i++){
+				result = result + cps[slice][i]*B(i,t);
+			}
+			return result;
+		}
+
+		Vector hermite(Vector p0 , Vector p1 , Vector v0 , Vector v1 , float t0 , float t1 , float t , bool derive){
+			Vector a0,a1,a2,a3;
+
+			a0 = p0;
+			a1 = v0;
+			a2 = (((p1-p0)*3.0f)/(pow(t1-t0,2)))-((v1+(v0*2.0f))/(t1-t0));
+			a3 = (((p0-p1)*2.0f)/(pow(t1-t0,3)))+((v1+v0)/(pow(t1-t0,2)));
+			float tt = t-t0;
+			if(!derive){
+			return a3*tt*tt*tt+a2*tt*tt+a1*tt+a0;
+			}if(derive){
+				return (a3*tt*tt)*3+(a2*tt)*2+a1;
+			}
+		}
+
+		Vector catmull(float t , float bezier_t , int slice , bool derive){
+			Vector prev , act , next , nextnext;
+			float prev_t , act_t , next_t , nextnext_t;
+			Vector v0 , v1;
+
+			act = bezier(bezier_t , slice);
+			next = bezier(bezier_t , slice+1);
+			act_t = slice;
+			next_t = slice+1;
+			if(slice==0){
+				v0 = Vector(0.1,0.1,0.1);
+				nextnext = bezier(bezier_t,slice+2);
+				nextnext_t = slice+2;
+				v1 = v1 = ((nextnext-next)/(nextnext_t-next_t))+((next-act)/(next_t-act_t));
+			}else if(slice==5){
+				prev = bezier(bezier_t , slice-1);
+				prev_t = slice-1;
+				v0 = ((next-act)/(next_t-act_t))+((act-prev)/(act_t-prev_t));
+				v1 = Vector(0.1,0.1,0.1);
+			}else{
+				prev = bezier(bezier_t , slice-1);
+				nextnext = bezier(bezier_t , slice+2);
+				prev_t = slice-1;
+				nextnext_t = slice+2;
+				v0 = ((next-act)/(next_t-slice))+((act-prev)/(slice-prev_t));
+				v1 = ((nextnext-next)/(nextnext_t-next_t))+((next-act)/(next_t-slice));
+			}
+
+			return hermite(act , next , v0 , v1 , act_t , next_t , t , derive);
+		}
+
+
+};
+
 class Sphere :public Object{
 public:
 	Vector center;
 	float radius;
+
+	Sphere(float du=0.1f , float dv=0.1f){
+		deltau=du;
+		deltav=dv;
+	}
+
 	void draw(){
 		float x,y,z;
 		Vector du;
 		Vector dv;
 		Vector normal;
 		setMaterial(kd , ks , shininess);
-		glBegin(GL_TRIANGLE_FAN);
+		glBegin(GL_QUADS);
 
-		for(float u = 0 ; u<M_PI ; u+=0.05){
-			for(float v = 0 ; v<2*M_PI ; v+=0.05){
+
+
+		for(float u = 0 ; u<M_PI ; u+=deltau){
+			for(float v = 0 ; v<2*M_PI ; v+=deltav){
+
 				x = radius*sinf(u)*cosf(v);
 				y = radius*sinf(u)*sinf(v);
 				z = radius*cosf(u);
+
+				glVertex3f(x,y,z);
+
+				x = radius*sinf(u+deltau)*cosf(v);
+				y = radius*sinf(u+deltau)*sinf(v);
+				z = radius*cosf(u+deltau);
+
+				glVertex3f(x,y,z);
+
+				x = radius*sinf(u+deltau)*cosf(v+deltav);
+				y = radius*sinf(u+deltau)*sinf(v+deltav);
+				z = radius*cosf(u+deltau);
+
+				glVertex3f(x,y,z);
+
+				x = radius*sinf(u)*cosf(v+deltav);
+				y = radius*sinf(u)*sinf(v+deltav);
+				z = radius*cosf(u);
+
+				glVertex3f(x,y,z);
+
+
 
 				du.x = radius*cosf(u)*cosf(v);
 				du.y = radius*cosf(u)*sinf(v);
@@ -202,8 +396,12 @@ public:
 				dv.z = 0;
 
 				normal = du%dv;
+				if(y==0){
+					normal = Vector(0,0,1);
+				}
 				glNormal3f(normal.x , normal.y , normal.z);
-				glVertex3f(x,y,z);
+
+
 			}
 		}
 		glEnd();
@@ -222,17 +420,38 @@ public:
 		Vector du;
 		Vector dv;
 		Vector normal;
-
+		deltau = 0.1f;
+		deltav = 0.1f;
 		setMaterial(kd , ks , shininess);
 
-		glBegin(GL_TRIANGLE_FAN) ;
+		glBegin(GL_QUADS) ;
 
-		for(float u = 0 ; u<radius ; u+=0.1f){
-			for(float v = 0 ; v<2*M_PI ; v+=0.1f){
+		for(float u = 0 ; u<radius ; u+=deltau){
+			for(float v = 0 ; v<2*M_PI ; v+=deltav){
 
 				x = u*cosf(v)/param;
 				y = u*sinf(v)/param;
 				z = ((u*u+1));
+
+				glVertex3f(x,y,z);
+
+				x = (u+deltau)*cosf(v)/param;
+				y = (u+deltau)*sinf(v)/param;
+				z = (((u+deltau)*(u+deltau)+1));
+
+				glVertex3f(x,y,z);
+
+				x = (u+deltau)*cosf(v+deltav)/param;
+				y = (u+deltau)*sinf(v+deltav)/param;
+				z = (((u+deltau)*(u+deltau)+1));
+
+				glVertex3f(x,y,z);
+
+				x = (u)*cosf(v+deltav)/param;
+				y = (u)*sinf(v+deltav)/param;
+				z = (((u)*(u)+1));
+
+				glVertex3f(x,y,z);
 
 				du.x = cosf(v);
 				du.y = sinf(v);
@@ -244,7 +463,7 @@ public:
 				normal = du%dv;
 
 				glNormal3f(-normal.x , -normal.y , -normal.z);
-				glVertex3f(x,y,z);
+
 			}
 		}
 		glEnd();
@@ -262,15 +481,37 @@ public:
 		Vector du;
 		Vector dv;
 		Vector normal;
-
+		deltau=height/5.0f;
+		deltav=M_PI/8.0f;
 		setMaterial(kd , ks , shininess);
 
-		glBegin(GL_TRIANGLE_FAN);
-		for(float u=0 ; u<height ; u+=0.1f){
-			for(float v = 0 ; v<2*M_PI ; v+=1.0f){
+		glBegin(GL_QUADS);
+		for(float u=0 ; u<height ; u+=deltau){
+			for(float v = 0 ; v<2*M_PI ; v+=deltav){
 				x = radius*cosf(v);
 				y = radius*sinf(v);
 				z = u;
+
+				glVertex3f(x,y,z);
+
+				x = radius*cosf(v+deltav);
+				y = radius*sinf(v+deltav);
+				z = u;
+
+				glVertex3f(x,y,z);
+
+				x = radius*cosf(v+deltav);
+				y = radius*sinf(v+deltav);
+				z = u+deltau;
+
+				glVertex3f(x,y,z);
+
+				x = radius*cosf(v);
+				y = radius*sinf(v);
+				z = u+deltau;
+
+				glVertex3f(x,y,z);
+
 
 				dv.x = radius*(-sinf(v));
 				dv.y = radius*cosf(v);
@@ -283,7 +524,7 @@ public:
 				normal = du%dv;
 
 				glNormal3f(-normal.x , -normal.y , -normal.z);
-				glVertex3f(x,y,z);
+
 			}
 		}
 		glEnd();
@@ -291,24 +532,28 @@ public:
 };
 
 class Csirguru :public Object{
-	float angle;
+	float ankle_angle;
+	float knee_angle;
 	Sphere head;
 	Sphere lefteye;
 	Sphere righteye;
 	Cone beak;
 	Cone rowel[3];
-	Cylinder leg[3];
-	float prevt;
+	Cylinder leg[4];
+	Body body;
 	float upordown;
 	bool impulse;
 	float accel;
 	float anglevelocity;
 	float verticalvelocity;
+	Vector knee_velocity;
+	State state;
 
 
 public:
 	bool blownup;
 	Csirguru(Vector pos=Vector(0,0,0) , Vector dir=Vector(0,0,0)){
+		state = PREPARE;
 		blownup = false;
 		active = true;
 		verticalvelocity = dir.y;
@@ -316,20 +561,21 @@ public:
 		accel = 0;
 		impulse = true;
 		upordown=1.0f;
-		angle = 15;
+		knee_angle= 40;
+		ankle_angle = -(knee_angle/2.0f);
 		velocity=dir;
-		prevt=0;
-		head.radius = 3.0f;
-		lefteye.radius = 0.8f;
-		righteye.radius = 0.8f;
-		beak.radius = 1.2f;
-		beak.param = 1.5f;
+		head.radius = 2.5f;
+		lefteye.radius = 0.5f;
+		righteye.radius = 0.5f;
+		beak.radius = 1.25f;
+		beak.param = 1.3f;
+		body = Body(8.0f);
 		for(int i=0 ; i<3 ; i++){
-			rowel[i].param=1.4f;
-			rowel[i].radius=2.0f;
+			rowel[i].param=1.0f;
+			rowel[i].radius=1.0f;
 			rowel[i].shininess=10;
 
-			rowel[i].kd[0]=2.0f;
+			rowel[i].kd[0]=1.25f;
 			rowel[i].kd[1]=0.0f;
 			rowel[i].kd[2]=0.0f;
 			rowel[i].kd[3]=1.0f;
@@ -340,14 +586,17 @@ public:
 			rowel[i].ks[3]=1.0f;
 		}
 
-		for(int i=0 ; i<3 ; i++){
+		for(int i=0 ; i<4 ; i++){
+
 			leg[i].radius=0.3f;
-			leg[i].height=3;
-			if(i==2){
-				leg[i].height=2.5;
-			}
-			if(i==0){
-				leg[i].height=2;
+			if(i==3){
+				leg[i].height=2.0f;
+			}if(i==2){
+				leg[i].height=1.5f;
+			}if(i==1){
+				leg[i].height=3.0f;
+			}if(i==0){
+				leg[i].height=1.0f;
 			}
 			leg[i].kd[0]=1.0f;
 			leg[i].kd[1]=1.0f;
@@ -373,7 +622,21 @@ public:
 		head.ks[1]=0.5f;
 		head.ks[2]=0.5f;
 		head.ks[3]=1.0f;
-		head.shininess = 50;
+
+		head.shininess = 20;
+
+		body.kd[0]=1.0f;
+		body.kd[1]=1.0f;
+		body.kd[2]=1.0f;
+		body.kd[3]=1.0f;
+
+		body.ks[0]=0.5f;
+		body.ks[1]=0.5f;
+		body.ks[2]=0.5f;
+		body.ks[3]=1.0f;
+
+		body.shininess = 500;
+
 		lefteye.kd[0]=0.1f;
 		lefteye.kd[1]=0.1f;
 		lefteye.kd[2]=0.1f;
@@ -408,10 +671,7 @@ public:
 
 	void draw(){
 
-
-
 	if(!blownup){
-		jump();
 		glPushMatrix();
 		glTranslatef(pos.x , pos.y , pos.z);
 
@@ -420,59 +680,69 @@ public:
 		if(velocity.z<0){rotation = rotation-180;}
 		glRotatef(rotation,0,1,0);
 
-		glPushMatrix();
-			glTranslatef(0, leg[2].radius ,0);
-			leg[2].draw();
-		glPopMatrix();
 
 		glPushMatrix();
-			glRotatef(angle,1,0,0);
+			glTranslatef(0, leg[3].radius ,0);
+			leg[3].draw();
+
+
+			glRotatef(ankle_angle,1,0,0);
+			glTranslatef(0,leg[2].height,0);
+			glRotatef(90,1,0,0);
+
+			leg[2].draw();
+
+			glRotatef(-90 ,1,0,0);
+
+			glRotatef(knee_angle , 1,0,0);
 			glTranslatef(0,leg[1].height ,0);
 			glRotatef(90,1,0,0);
 
 			leg[1].draw();
-		glPopMatrix();
 
-		glPushMatrix();
-			float sina = sinf(angle*(M_PI/180.0f));
-			float cosa = cosf(angle*(M_PI/180.0f));
-			glTranslatef(0,(leg[0].height+leg[1].height)-(leg[1].height-(cosa*leg[1].height)), sina*leg[1].height);
-			glRotatef(90 ,1,0,0);
+			glRotatef(-90 ,1,0,0);
+
+			glRotatef(-(ankle_angle+knee_angle),1,0,0);
+			glTranslatef(0,leg[0].height,0);
+			glRotatef(90,1,0,0);
+
 			leg[0].draw();
-			glRotatef(-90,1,0,0);
 
-			glTranslatef(0,head.radius,0);
+			glRotatef(-90,1,0,0) ;
+
+			glTranslatef(0,body.radius/2-leg[0].height,0);
+			body.draw();
+
+			glTranslatef(0.0f, head.radius+head.radius-leg[0].height, 3.5f);
+
 			head.draw();
 
 			glPushMatrix();
-				glTranslatef( 0 , -head.radius/2 , head.radius+2.0f);
+				glTranslatef( 0 , -head.radius/2.0f , head.radius+head.radius/1.5f);
 				glRotatef(-170 ,1,0,0);
 				beak.draw();
 			glPopMatrix();
 
 			glPushMatrix();
-				glTranslatef(-head.radius/4 , +head.radius/4 , head.radius-lefteye.radius/2);
+				glTranslatef(-head.radius/4.0f , +head.radius/4.0f , head.radius-lefteye.radius/1.5f);
 				lefteye.draw();
 			glPopMatrix();
 
 			glPushMatrix();
-				glTranslatef(+head.radius/4 , +head.radius/4, head.radius-righteye.radius/2);
+				glTranslatef(+head.radius/4.0f , +head.radius/4.0f, head.radius-righteye.radius/1.5f);
 				righteye.draw();
 				glPopMatrix();
 
 		for(int i=0 ; i<3 ; i++){
 			glPushMatrix();
-			glTranslatef(0 , head.radius+rowel[i].radius , head.radius-(i)-head.radius/1.9);
-			glRotatef(90 , 1,0,0);
+			glTranslatef(0 , head.radius+rowel[i].radius*1.3 , -i+head.radius/2.5);
+			glRotatef(90.0f , 1,0,0);
 			rowel[i].draw();
 			glPopMatrix();
-
 		}
-
 			glPopMatrix();
 			glPopMatrix();
 		}
-
 		if(blownup){
 		if(head.active){
 			for(int i =0 ; i<3 ; i++){
@@ -487,16 +757,23 @@ public:
 
 			head.blowup();
 			glPushMatrix();
-
 			glTranslatef(head.pos.x , head.pos.y , head.pos.z);
 			glRotatef(head.rotation , 1,0,0);
 			head.draw();
+			glPopMatrix();
+
+			body.blowup();
+			glPushMatrix();
+			glTranslatef(body.pos.x , body.pos.y , body.pos.z);
+			glRotatef(body.rotation , 1,1,1);
+			body.draw();
 			glPopMatrix();
 
 			beak.blowup();
 			glPushMatrix();
 			glTranslatef(beak.pos.x , beak.pos.y , beak.pos.z);
 			glRotatef(beak.rotation , 1,0,0);
+			glRotatef(90,1,0,0);
 			beak.draw();
 			glPopMatrix();
 
@@ -514,13 +791,12 @@ public:
 			righteye.draw();
 			glPopMatrix();
 
-
 			for(int i=0 ; i<3 ; i++){
 				rowel[i].blowup();
 				glPushMatrix();
 				glTranslatef(rowel[i].pos.x , rowel[i].pos.y , rowel[i].pos.z);
 				glRotatef(90 ,1,0,0);
-				glRotatef(rowel[i].rotation , 1,0,0);
+				glRotatef(rowel[i].rotation , 1,0,1);
 				rowel[i].draw();
 				glPopMatrix();
 			}
@@ -530,36 +806,99 @@ public:
 		}
 }
 
-	void upanddown(){
-			float time = glutGet(GLUT_ELAPSED_TIME);
-			float t = time-prevt;
-			anglevelocity+= accel*t;
-			angle+=(t/1000)*upordown*anglevelocity;
-			if(angle>60){upordown = -upordown; accel=15.0f; angle =60;}
-			if(angle<15){upordown=-upordown; impulse = false; accel=0.0f ,anglevelocity = 85.0f; angle=15;}
-			prevt=time;
+	void prepare(){
+		float time = glutGet(GLUT_ELAPSED_TIME);
+					float t = time-prevt;
+					anglevelocity+= accel*t;
+					knee_angle+=(t/1000)*upordown*anglevelocity;
+
+					if(knee_angle>110){
+						upordown = -upordown;
+						accel=5.0f;
+						knee_angle =110;
+					}
+					if(knee_angle<40.0f){
+						ankle_angle+=(t/1000)*(-upordown)*anglevelocity;
+
+					}if(ankle_angle>20.0f){
+						knee_angle = 0.0f;
+						ankle_angle = 20.0f;
+						state = INAIR;
+						accel = -5.0f;
+						upordown = -upordown;
+						return;
+					}
+		prevt=glutGet(GLUT_ELAPSED_TIME);
+	}
+
+	void land(){
+		float time = glutGet(GLUT_ELAPSED_TIME);
+		float t = time-prevt;
+		anglevelocity+= accel*t;
+		knee_angle+=(t/1000)*upordown*anglevelocity;
+
+		if(anglevelocity<85.0f){
+			accel=0.0f;
+			anglevelocity=85;
+		}
+
+		if(knee_angle>130.0f){
+			accel=0.0f;
+			anglevelocity = 85.0f;
+			upordown = -upordown;
+			knee_angle = 90.0f;
+
+		}if(knee_angle<40.0f){
+			knee_angle = 40.0f;
+			ankle_angle = 0.0f;
+			upordown = -upordown;
+			accel = 0.0f;
+			anglevelocity = 85.0f;
+			velocity=randomVelocity();
+			verticalvelocity=velocity.y;
+			state=PREPARE;
+		}
+		prevt = time;
+
 	}
 
 	void jump(){
 
-		if(impulse){
-			upanddown();
-		}else{
-			float time=glutGet(GLUT_ELAPSED_TIME);
-			float t = (time-prevt)/1000.0f;
+		float time=glutGet(GLUT_ELAPSED_TIME);
+		float t = (time-prevt)/1000.0f;
 		pos.x+= velocity.x*t;
 		verticalvelocity-= 9.81f*t;
 		pos.y+= (verticalvelocity*t);
 		pos.z+= velocity.z*t;
 
-		if(pos.y<0){
-			velocity=randomVelocity();
-			verticalvelocity=velocity.y;
-			pos.y = 0;
-			impulse=true;
-		}
+			knee_angle = 0.0f;
+			ankle_angle-=40.0f*t;
+			if(ankle_angle<-20.0f){
+				ankle_angle = -20.0f;
+			}
 
+		if(pos.y<-0.5f){
+			pos.y = 0;
+			state=LAND;
+			knee_angle = 40.0f;
+		}
 		prevt=time;
+	}
+
+	void move(){
+		switch(state){
+		case PREPARE:
+			prepare();
+			break;
+		case INAIR:
+			jump();
+			break;
+		case LAND:
+			land();
+			break;
+		case BLOWUP:
+			blownup=true;
+			break;
 		}
 	}
 
@@ -571,38 +910,36 @@ public:
 		initpos.y+=leg[2].radius;
 		leg[2].pos = initpos;
 		leg[2].velocity = randomVelocity();
-		//leg[2].prevt = t;
 		leg[2].rotation = rotation;
 
 		initpos.y+=leg[1].height;
 		leg[1].pos = initpos;
 		leg[1].velocity = randomVelocity();
 		leg[1].prevt = t;
-		//leg[1].rotation = rotation;
 
 		initpos.y+=leg[2].height;
 		leg[0].pos = initpos;
 		leg[0].velocity = randomVelocity();
 		leg[0].prevt = t;
-		//leg[0].rotation = rotation;
+
+		body.pos = initpos;
+		body.velocity = randomVelocity();
+		body.prevt = t;
 
 		initpos.y+=head.radius;
 		head.pos = initpos;
 		head.velocity = randomVelocity();
 		head.prevt = t;
-		//head.rotation = rotation;
 
 		Vector temp(initpos.x-head.radius/4 , initpos.y+head.radius/4 , initpos.z+head.radius-lefteye.radius);
 		lefteye.pos = temp;
 		lefteye.velocity=randomVelocity();
 		lefteye.prevt = t;
-		//lefteye.rotation = rotation;
 
 		temp = Vector(initpos.x+head.radius/4 , initpos.y+head.radius/4 , initpos.z+head.radius-lefteye.radius);
 		righteye.pos = temp;
 		righteye.velocity=randomVelocity();
 		righteye.prevt = t;
-		//righteye.rotation = rotation;
 
 		temp.x = initpos.x;
 		temp.y = initpos.y;
@@ -610,7 +947,6 @@ public:
 		beak.pos = temp;
 		beak.velocity = randomVelocity();
 		beak.prevt =t;
-		//beak.rotation = rotation;
 
 		for(int i = 0 ; i<3 ; i++){
 			temp.x = initpos.x;
@@ -622,7 +958,6 @@ public:
 			rowel[i].radius = 1.5f;
 		}
 	}
-
 
 };
 
@@ -639,8 +974,8 @@ public:
 		prevt = 0;
 		isfall = false;
 		land = false;
-		velocity.y = 2.0f;
-		pos = Vector(0,30,0);
+		velocity.y = 5.0f;
+		pos = Vector(0,25,0);
 		body.radius = 2.0f;
 		body.kd[0]=0.0f;
 		body.kd[1]=0.0f;
@@ -678,8 +1013,8 @@ public:
 		if(isfall){
 			fall();
 			if(pos.y<0){
-				pos.y=30.0f;
-				velocity.y=1.0f;
+				pos.y=25.0f;
+				velocity.y=5.0f;
 				isfall=false;
 				land = true;
 			}
@@ -705,7 +1040,7 @@ public:
 		case 'd':
 			pos.x+=1.0f;
 			break;
-		case 's':
+		case 'y':
 			pos.z+=1;
 			break;
 		case 0x20:
@@ -730,46 +1065,80 @@ public:
 
 class Game{
 private:
-	Csirguru csirbox[15];
+	Csirguru csirbox[7];
 	Bomb bomb;
 	int count;
-	float prevt;
+
 public:
+	float prevt;
 	Game(){
 		count=0;
-		prevt=0;
+		prevt=-1;
+		csirbox[count]=Csirguru(Vector(bomb.pos.x , 0 , bomb.pos.z),randomVelocity());
+		count++;
 	}
 
 	void step(){
 
+		float distance;
+				for(int i =0 ; i<count ; i++){
+					if(bomb.isLand()){
+						if(i==count-1){
+							bomb.setLand(false);
+						}
+
+						Vector temp(bomb.pos.x , 0, bomb.pos.z);
+						distance=(temp-csirbox[i].pos).Length();
+
+						if(distance<10.0f && !csirbox[i].blownup && csirbox[i].active){
+							csirbox[i].blowup();
+						}
+					}
+					if(csirbox[i].active){
+						csirbox[i].move();
+					}
+				}
 
 		float time = glutGet(GLUT_ELAPSED_TIME);
 
-		if(((time-prevt)>=1000)&& count<15){
+		float diff = time-prevt;
+
+		int deltat = (int)(diff/1000);
+
+		for(int i = 0 ; i<deltat ; i++){
+			if(count<5){
 			csirbox[count]=Csirguru(Vector(bomb.pos.x , 0 , bomb.pos.z) , randomVelocity());
+			csirbox[count].prevt = prevt;
 			count++;
+			}
+			if(count==5){
+				for(int i = 0 ; i<count ; i++){
+					if(!csirbox[i].active){
+						csirbox[i]=Csirguru(Vector(bomb.pos.x , 0 , bomb.pos.z) , randomVelocity());
+						csirbox[i].prevt = prevt;
+						break;
+					}
+				}
+			}
+		}
+
+		if(deltat>=1){
 			prevt = time;
 		}
 
-		bomb.draw();
-
-
-		float distance;
-		for(int i =0 ; i<count ; i++){
-			if(bomb.isLand()){
-				distance=(bomb.pos-csirbox[i].pos).Length();
-				if(distance<10.0f && !csirbox[i].blownup && csirbox[i].active){
-					csirbox[i].blowup();
-				}
-			}
-			if(csirbox[i].active){
-				csirbox[i].draw();
-			}
-		}
 	}
 
 	void moveBomb(char dir){
 		bomb.move(dir);
+	}
+
+	void draw(){
+		for(int i = 0 ; i<count ; i++){
+			if(csirbox[i].active){
+				csirbox[i].draw();
+			}
+		}
+		bomb.draw();
 	}
 };
 
@@ -780,6 +1149,9 @@ const int screenHeight = 600;
 Color image[screenWidth*screenHeight];	// egy alkalmazås ablaknyi kÊp
 
 Game game;
+Csirguru csirg(Vector(0,0,0) , Vector(1,10,0));
+Body body(3.0f);
+
 
 
 // Inicializacio, a program futasanak kezdeten, az OpenGL kontextus letrehozasa utan hivodik meg (ld. main() fv.)
@@ -788,31 +1160,18 @@ void onInitialization( ) {
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_CULL_FACE);
 	glShadeModel(GL_SMOOTH);
-	/*
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
 
+
+	glEnable(GL_NORMALIZE);
 	float ka[4] = {0.5f, 0.5f, 0.5f ,1};
 	float kd[4] = {0.8 , 0.8 , 0.8 , 1};
 	float ks[4] = {1.5,1.5,1.5,1};
 	glLightfv(GL_LIGHT0 , GL_AMBIENT , ka);
 	glLightfv(GL_LIGHT0 , GL_DIFFUSE , kd);
 	glLightfv(GL_LIGHT0 , GL_SPECULAR , ks);
-	glLightfv(GL_LIGHT0 , GL_POSITION , lightpos);
 	glEnable(GL_LIGHT0);
 
-	gluLookAt(0, 0 , 0,   0, 0, -1,   0, 1 , 0);
-	*/
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	gluPerspective(60 , 1 , 0.1 , 200);
 
-	glEnable(GL_NORMALIZE);
-	glEnable(GL_LIGHTING);
-
-	//game.addCsirguru(Vector(0,0,0) , Vector(0,0,0));
-	//Csirguru cs(Vector(0,0,0) , Vector(10,10,10));
-	//box[0]=cs;
 
 }
 
@@ -822,34 +1181,47 @@ void onDisplay( ) {
     glClearColor(0.0f, 1.0f, 1.0f, 1.0f);		// torlesi szin beallitasa
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // kepernyo torles
 
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	gluPerspective(60 , 1 , 0.1 , 200);
+
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    gluLookAt(0, 20 , 100 ,   0, 0, -1,   0, 1 , 0);
+    gluLookAt(0, 40 , 50 ,   0, 0, -1,   0, 1 , 0);
 
-    float ka[4] = {0.5f, 0.5f, 0.5f ,1};
-    float kd[4] = {0.8 , 0.8 , 0.8 , 1};
-    float ks[4] = {1.5,1.5,1.5,1};
-    glLightfv(GL_LIGHT0 , GL_AMBIENT , ka);
-    glLightfv(GL_LIGHT0 , GL_DIFFUSE , kd);
-    glLightfv(GL_LIGHT0 , GL_SPECULAR , ks);
     glLightfv(GL_LIGHT0 , GL_POSITION , lightpos);
-    glEnable(GL_LIGHT0);
 
-    float kdc[4]={0.0 , 1.0 , 0.0 , 1.0};
-    float ksc[4]={0.0 , 1.0 , 0.0 , 1.0};
-
-    setMaterial(kdc , ksc , 20);
+    glEnable(GL_LIGHTING);
 
     glBegin(GL_QUADS);
-    glNormal3f(0,1,0);
-    glVertex3f(-1000,0,-1000);
-    glVertex3f(-1000,0,1000);
-    glVertex3f(1000,0,1000);
-    glVertex3f(1000,0,-1000);
-    glEnd();
+    for(float u = -100 ; u<100 ; u+=10){
+    	float kdc[4]={0.0f , fabs(u/100.0f) , 0.0f , 1.0f};
+    	    		 float ksc[4]={1.0 , 1.0 , 1.0 , 1.0};
+    	    		setMaterial(kdc ,ksc , 20);
+    	for(float v = -100 ; v<100 ; v+=10){
 
-    game.step();
+    		 glNormal3f(0,1,0);
+    		 glVertex3f(u,0,v);
+    		 glVertex3f(u+10,0,v);
+    		 glVertex3f(u+10,0,v+10);
+    		 glVertex3f(u,0,v+10);
+    	}
+    }
+
+    glEnd();
+    game.draw();
+
+    float shadow[4][4] = {1,0,0,0,
+    					  -lightpos[0]/lightpos[1] , 0 , -lightpos[2]/lightpos[1],0,
+						  0,0,1,0,
+						  0,0.5f , 0 , 1
+    };
+    glMultMatrixf(&shadow[0][0]);
+    glDisable(GL_LIGHTING);
+    glColor3f(0,0,0);
+    game.draw();
 
     glutSwapBuffers();     				// Buffercsere: rajzolas vege
 
@@ -880,6 +1252,10 @@ void onMouseMotion(int x, int y)
 
 // `Idle' esemenykezelo, jelzi, hogy az ido telik, az Idle esemenyek frekvenciajara csak a 0 a garantalt minimalis ertek
 void onIdle( ) {
+	if(game.prevt<0.0f){
+		game.prevt = glutGet(GLUT_ELAPSED_TIME);
+	}
+	game.step();
 	glutPostRedisplay();
 }
 
